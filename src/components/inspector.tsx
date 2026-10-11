@@ -2,7 +2,6 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react
 import {
   ArrowLeftRightIcon,
   ChevronDownIcon,
-  Grid2x2Icon,
   Link2Icon,
   Link2OffIcon,
   MoonIcon,
@@ -28,7 +27,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { CommandShortcut } from './commands'
 
-export type Backdrop = 'checker' | 'light' | 'dark'
+export type Backdrop = 'checker' | 'checker-dark' | 'light' | 'dark'
 
 interface InspectorProps {
   selectionStore: SelectionStore
@@ -45,8 +44,9 @@ interface InspectorProps {
   onCenterSelection: () => void
 }
 
-const backdrops: { value: Backdrop; label: string; icon: typeof SunIcon }[] = [
-  { value: 'checker', label: 'Transparent', icon: Grid2x2Icon },
+const backdrops: { value: Backdrop; label: string; icon?: typeof SunIcon }[] = [
+  { value: 'checker', label: 'Light grid' },
+  { value: 'checker-dark', label: 'Dark grid' },
   { value: 'light', label: 'Light', icon: SunIcon },
   { value: 'dark', label: 'Dark', icon: MoonIcon },
 ]
@@ -169,7 +169,15 @@ export function Inspector({
                 <TooltipTrigger
                   render={<ToggleGroupItem value={value} aria-label={`${label} background`} />}
                 >
-                  <Icon />
+                  {Icon ? (
+                    <Icon />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      data-backdrop={value}
+                      className="preview-grid size-4 border border-black/10"
+                    />
+                  )}
                 </TooltipTrigger>
                 <TooltipContent>{label}</TooltipContent>
               </Tooltip>

@@ -203,6 +203,20 @@
 
 /* SVG-Edit mounts its own SVG tree inside .svg-host and sizes it to the viewport (the pasteboard).
    The artboard is its #canvasBackground; its fill is a preview setting, not part of the document. */
+.svg-host,
+.preview-grid {
+  --checker-base: #fafaf9;
+  --checker-contrast: #e7e5e4;
+}
+.svg-host[data-backdrop='checker-dark'],
+.preview-grid[data-backdrop='checker-dark'] {
+  --checker-base: #2b2b2b;
+  --checker-contrast: #323232;
+}
+.preview-grid {
+  background: repeating-conic-gradient(var(--checker-contrast) 0 25%, var(--checker-base) 0 50%) 0
+    0 / 8px 8px;
+}
 .svg-host svg {
   display: block;
 }
@@ -215,7 +229,8 @@
 .svg-host #canvasBackground rect {
   stroke: none;
 }
-.svg-host[data-backdrop='checker'] #canvasBackground rect {
+.svg-host[data-backdrop='checker'] #canvasBackground rect,
+.svg-host[data-backdrop='checker-dark'] #canvasBackground rect {
   fill: url(#svgw-checker);
 }
 .svg-host[data-backdrop='light'] #canvasBackground rect {

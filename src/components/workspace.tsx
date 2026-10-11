@@ -1984,10 +1984,10 @@ function addCheckerPattern(root: SVGSVGElement) {
   }))
     pattern.setAttribute(name, value)
   for (const [x, y, fill] of [
-    [0, 0, '#fafaf9'],
-    [8, 8, '#fafaf9'],
-    [8, 0, '#e7e5e4'],
-    [0, 8, '#e7e5e4'],
+    [0, 0, 'var(--checker-base)'],
+    [8, 8, 'var(--checker-base)'],
+    [8, 0, 'var(--checker-contrast)'],
+    [0, 8, 'var(--checker-contrast)'],
   ] as const) {
     const cell = document.createElementNS(ns, 'rect')
     for (const [name, value] of Object.entries({ x, y, width: 8, height: 8, fill }))
