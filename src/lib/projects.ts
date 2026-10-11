@@ -24,8 +24,7 @@ interface ProjectDatabase extends DBSchema {
 
 // Open lazily: IndexedDB is a browser API and must not run during shell prerendering.
 function database() {
-  // Keeps the pre-rename database name so existing local projects stay available.
-  return openDB<ProjectDatabase>('ez-svg', 1, {
+  return openDB<ProjectDatabase>('svgw', 1, {
     upgrade(db) {
       const projects = db.createObjectStore('projects', { keyPath: 'id' })
       projects.createIndex('updatedAt', 'updatedAt')
