@@ -46,6 +46,7 @@ import {
   createLayer,
   exportLayers,
   fitCanvasToArtwork as fitArtwork,
+  hasArtwork,
   isBlocked,
   layerName,
   layerOf,
@@ -114,6 +115,7 @@ import { ExportDialog } from './export-dialog'
 import { Inspector, type Backdrop } from './inspector'
 import { Logo } from './logo'
 import { CanvasGuides } from './canvas-guides'
+import { CanvasStarter } from './canvas-starter'
 import { LayersPanel } from './layers-panel'
 import { useTheme } from './theme'
 import { ProjectList } from './project-list'
@@ -155,6 +157,8 @@ export function Workspace({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<Project | null>(null)
   const [ready, setReady] = useState(false)
   const [tool, setTool] = useState<Tool>('select')
+  const [canvasEmpty, setCanvasEmpty] = useState(false)
+  const [starterDismissed, setStarterDismissed] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [selectionStore] = useState(createSelectionStore)
   const [history, setHistory] = useState({ undo: false, redo: false })
@@ -436,6 +440,9 @@ export function Workspace({ projectId }: { projectId: string }) {
       previous === 'hand' && current === 'select' ? 'hand' : isTool(current) ? current : 'select',
     )
     if (documentRefresh.current) {
+      const artwork = hasArtwork(editor.getSvgContent())
+      setCanvasEmpty(!artwork)
+      if (artwork) setStarterDismissed(true)
       documentRefresh.current = false
       setDocumentRevision((value) => value + 1)
     }
@@ -560,6 +567,9 @@ export function Workspace({ projectId }: { projectId: string }) {
       throw new Error('The SVG engine could not open this document.')
     editor.undoMgr.resetUndoStack()
     editor.setMode('select')
+    setTool('select')
+    setCanvasEmpty(false)
+    setStarterDismissed(false)
     active.current = next
     if (updateRoute) {
       const id = projectRouteId(next)
@@ -881,6 +891,7 @@ export function Workspace({ projectId }: { projectId: string }) {
 
   function selectTool(next: Tool) {
     commitAttribute()
+    if (next === 'rect' || next === 'ellipse' || next === 'path') setStarterDismissed(true)
     const mode = next === 'hand' ? 'select' : next
     engine.current?.setMode(mode)
     setMode(mode)
@@ -1526,7 +1537,7 @@ export function Workspace({ projectId }: { projectId: string }) {
             }}
           >
             <PlusIcon />
-            New
+            New project
           </Button>
           <Button
             variant="outline"
@@ -1704,6 +1715,14 @@ export function Workspace({ projectId }: { projectId: string }) {
                 aria-label="SVG editing canvas"
               />
             </div>
+            {ready &&
+              !opening &&
+              project &&
+              canvasEmpty &&
+              !starterDismissed &&
+              tool === 'select' && (
+                <CanvasStarter onStart={selectTool} onDismiss={() => setStarterDismissed(true)} />
+              )}
           </div>
           {project && (
             <footer className="flex h-8 shrink-0 items-center justify-between gap-4 border-t bg-background px-3 text-[11px] text-muted-foreground">
@@ -1712,7 +1731,9 @@ export function Workspace({ projectId }: { projectId: string }) {
                   ? 'Previewing without selection outlines · release to edit'
                   : selection
                     ? `${selection.label} selected · arrows to nudge, ${bindingText(undoBinding)} to undo`
-                    : toolHint(tool, bindingText(escapeBinding))}
+                    : canvasEmpty && tool === 'select'
+                      ? 'Choose Rectangle, Ellipse, or Pen to start drawing'
+                      : toolHint(tool, bindingText(escapeBinding))}
               </span>
               <div className="flex shrink-0 items-center gap-3">
                 <span className="tabular-nums">

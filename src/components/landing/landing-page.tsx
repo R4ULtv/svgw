@@ -97,7 +97,7 @@ export function LandingPage({
           aria-label="Main navigation"
           className="landing-nav-links flex items-center gap-7 text-[13px] text-muted-foreground [&_a]:inline-flex [&_a]:items-center [&_a]:min-h-10 [&_a:hover]:text-foreground max-[761px]:hidden"
         >
-          <Link to="/projects">Projects</Link>
+          <Link to="/projects">Your projects</Link>
           <a href="#self-host">Self-host</a>
         </nav>
         <div className="landing-nav-actions flex items-center gap-5 ml-auto max-[761px]:gap-2 max-[481px]:gap-2">
@@ -107,7 +107,7 @@ export function LandingPage({
             onClick={() => onCreate()}
             className="nav-open h-9.5 px-4 text-[12px] gap-3 max-[761px]:h-10 max-[761px]:text-[12px] max-[761px]:px-3 max-[481px]:px-2.5 max-[481px]:gap-2 max-[481px]:[&_>_svg]:w-3.5 max-[481px]:[&_>_svg]:h-3.5 leading-[1.3333333333]"
           >
-            Open editor
+            New project
             <ArrowRightIcon className="size-4 max-[481px]:size-3.5" />
           </Button>
         </div>
@@ -205,7 +205,7 @@ function LandingMenu() {
           <DropdownMenuLabel className="text-[10px] tracking-[.04em]">Explore</DropdownMenuLabel>
           <DropdownMenuItem className="min-h-9.5 cursor-pointer" render={<Link to="/projects" />}>
             <FolderOpenIcon />
-            Projects
+            Your projects
           </DropdownMenuItem>
           <DropdownMenuItem className="min-h-9.5 cursor-pointer" render={<a href="#self-host" />}>
             <CloudflareLogo />
@@ -256,7 +256,7 @@ function StartActions({ onCreate, onImport, busy }: Actions) {
         onClick={() => onCreate()}
         className="landing-cta h-11.25 px-5 text-[13px] gap-4 max-[481px]:h-10.5 max-[481px]:text-[12px] max-[481px]:px-4 max-[481px]:gap-2.5 leading-[1.3333333333]"
       >
-        Start creating
+        New project
         <ArrowRightIcon />
       </Button>
       <Button
@@ -266,7 +266,7 @@ function StartActions({ onCreate, onImport, busy }: Actions) {
         className="landing-cta h-11.25 px-5 text-[13px] gap-4 max-[481px]:h-10.5 max-[481px]:text-[12px] max-[481px]:px-4 max-[481px]:gap-2.5 leading-[1.3333333333]"
       >
         <UploadIcon />
-        Open an SVG
+        Open SVG
       </Button>
     </div>
   )
@@ -482,7 +482,7 @@ function Playground(actions: Actions) {
             disabled={actions.busy}
             onClick={() => actions.onCreate(artworkSvg(artwork, color), `${example.label} icon`)}
           >
-            Keep going in the editor
+            Edit this example
             <ArrowRightIcon />
           </button>
         </div>
@@ -842,7 +842,7 @@ function Editorial(actions: Actions) {
             className="landing-text-link inline-flex items-center gap-3.75 border-b pb-1.5 mt-6.25 text-[12px] [&_svg]:w-3.5 [&_svg]:h-3.5"
             onClick={() => actions.onCreate()}
           >
-            Step into the workspace
+            New project
             <ArrowRightIcon />
           </button>
         </div>

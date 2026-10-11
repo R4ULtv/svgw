@@ -64,7 +64,7 @@ export function LandingNextPage({ onCreate, onImport, busy, projects }: LandingP
           aria-label="Main navigation"
           className="next-nav-links flex items-center gap-7 text-muted-foreground text-[13px] [&_>_a]:flex [&_>_a]:items-center [&_>_a]:min-h-10 [&_>_a:hover]:text-foreground max-[761px]:hidden"
         >
-          <Link to="/projects">Projects</Link>
+          <Link to="/projects">Your projects</Link>
           <a href="#self-host">Self-host</a>
         </nav>
         <div className="next-nav-actions flex items-center ml-auto gap-5 max-[761px]:gap-2">
@@ -74,7 +74,7 @@ export function LandingNextPage({ onCreate, onImport, busy, projects }: LandingP
             onClick={() => onCreate()}
             className="next-nav-open h-9.5 px-4 text-[12px] gap-3 max-[761px]:h-10 max-[761px]:text-[12px] max-[761px]:px-3 max-[481px]:px-2.5 max-[481px]:gap-2 max-[481px]:[&_>_svg]:w-3.5 max-[481px]:[&_>_svg]:h-3.5 leading-[1.3333333333]"
           >
-            Open editor
+            New project
             <ArrowRightIcon className="size-4 max-[481px]:size-3.5" />
           </Button>
         </div>
@@ -98,7 +98,7 @@ export function LandingNextPage({ onCreate, onImport, busy, projects }: LandingP
                 onClick={() => onCreate()}
                 className="next-action h-11.5 px-5 text-[13px] gap-3.5 max-[481px]:text-[12px] max-[481px]:h-11 max-[481px]:px-4 max-[481px]:gap-2.5 leading-[1.3333333333]"
               >
-                Open editor
+                New project
                 <ArrowRightIcon />
               </Button>
               <Button
@@ -108,7 +108,7 @@ export function LandingNextPage({ onCreate, onImport, busy, projects }: LandingP
                 className="next-action h-11.5 px-5 text-[13px] gap-3.5 max-[481px]:text-[12px] max-[481px]:h-11 max-[481px]:px-4 max-[481px]:gap-2.5 leading-[1.3333333333]"
               >
                 <UploadIcon />
-                Open an SVG
+                Open SVG
               </Button>
             </div>
             <p className="next-local-note [&_>_svg]:w-3.25 [&_>_svg]:h-3.25 text-muted-foreground">
@@ -324,7 +324,7 @@ function NavigationMenu() {
           <DropdownMenuLabel className="text-[10px]">Explore</DropdownMenuLabel>
           <DropdownMenuItem className="min-h-9.5 cursor-pointer" render={<Link to="/projects" />}>
             <FolderOpenIcon />
-            Projects
+            Your projects
           </DropdownMenuItem>
           <DropdownMenuItem className="min-h-9.5 cursor-pointer" render={<a href="#self-host" />}>
             <CloudflareLogo />

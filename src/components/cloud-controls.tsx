@@ -4,6 +4,7 @@ import {
   CloudOffIcon,
   CloudUploadIcon,
   GlobeIcon,
+  HardDriveIcon,
   HistoryIcon,
   KeyRoundIcon,
   LockIcon,
@@ -96,9 +97,13 @@ export function CloudControls({
     cloud.onlineState !== 'pending' &&
     cloud.onlineState !== 'conflict'
   const savingOnline = cloud.admin && owned && cloud.onlineState === 'saving'
-  const localStatus = { saving: 'Saving…', saved: 'Saved', error: 'Save failed' }[localState]
+  const localStatus = {
+    saving: 'Saving in this browser…',
+    saved: 'Saved in this browser',
+    error: 'Local save failed',
+  }[localState]
   const status =
-    !cloud.admin || localState === 'error'
+    !cloud.admin || !owned || localState === 'error'
       ? localStatus
       : savingOnline
         ? 'Saving online…'
@@ -116,6 +121,8 @@ export function CloudControls({
       <Spinner />
     ) : savedOnline ? (
       <CloudIcon />
+    ) : !cloud.admin || !owned ? (
+      <HardDriveIcon />
     ) : (
       <CloudOffIcon />
     )

@@ -1,4 +1,5 @@
 import {
+  ArrowLeftIcon,
   ChevronDownIcon,
   CopyIcon,
   DownloadIcon,
@@ -40,7 +41,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import { CommandShortcut } from './commands'
 import { CloudControls } from './cloud-controls'
 import { LoginButton } from './login-button'
-import { Logo } from './logo'
 import type { ThemePreference } from './theme'
 
 interface WorkspaceHeaderProps {
@@ -91,21 +91,15 @@ export function WorkspaceHeader({
   onDeleteRemote,
 }: WorkspaceHeaderProps) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-3 md:gap-4 md:px-4">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Link
-              to="/projects"
-              aria-label="All projects"
-              className="grid size-8 shrink-0 place-items-center outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            />
-          }
-        >
-          <Logo className="size-7" />
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Back to projects</TooltipContent>
-      </Tooltip>
+    <header className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-2 md:h-14 md:flex-nowrap md:gap-4 md:px-4 md:py-0">
+      <Link
+        to="/projects"
+        aria-label="Back to projects"
+        className="flex h-8 shrink-0 items-center gap-1.5 text-xs font-medium outline-none hover:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        <ArrowLeftIcon className="size-3.5" />
+        Projects
+      </Link>
       <span className="hidden h-6 w-px shrink-0 bg-border sm:block" aria-hidden="true" />
       <Button
         variant="ghost"
@@ -151,7 +145,10 @@ export function WorkspaceHeader({
         )}
       </div>
 
-      <nav aria-label="Workspace actions" className="flex shrink-0 items-center gap-1 sm:gap-2">
+      <nav
+        aria-label="Workspace actions"
+        className="flex w-full shrink-0 items-center justify-end gap-1 sm:gap-2 md:w-auto"
+      >
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -173,7 +170,7 @@ export function WorkspaceHeader({
               <DropdownMenuLabel>Create & open</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => onNew('blank')}>
                 <FilePlusIcon />
-                New blank canvas
+                New project
                 <Shortcut command="file.newBlank" />
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onImport(true)}>
@@ -187,7 +184,7 @@ export function WorkspaceHeader({
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onProjects}>
                 <FolderOpenIcon />
-                Browse projects
+                Project sidebar
                 <Shortcut command="navigate.projects" />
               </DropdownMenuItem>
               <DropdownMenuItem render={<Link to="/projects" />}>

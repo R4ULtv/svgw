@@ -61,7 +61,7 @@ export const commands = {
     inputs: 'allow',
   },
   'file.newBlank': {
-    title: 'New blank canvas',
+    title: 'New project',
     group: 'File',
     scope: 'global',
     binding: sequence('N', 'N'),

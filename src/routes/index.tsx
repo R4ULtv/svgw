@@ -185,7 +185,7 @@ function Home() {
             disabled={creating || !session.authReady}
             onClick={() => void create()}
           >
-            Make your first SVG
+            New project
             <ArrowRightIcon />
           </button>
         </div>

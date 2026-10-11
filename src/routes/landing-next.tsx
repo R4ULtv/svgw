@@ -178,7 +178,7 @@ function Home() {
             disabled={creating || !session.authReady}
             onClick={() => void create()}
           >
-            Open editor
+            New project
             <ArrowRightIcon />
           </button>
         </div>

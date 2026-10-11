@@ -95,6 +95,16 @@ export const layerName = (layer: Element) =>
 const drawableChildren = (element: Element) =>
   [...element.children].filter((child) => DRAWABLE.has(child.localName))
 
+/** Empty layer/group containers and definitions do not count as document artwork. */
+export function hasArtwork(root: Element): boolean {
+  for (const child of root.children) {
+    if (['g', 'svg', 'a', 'switch'].includes(child.localName)) {
+      if (hasArtwork(child)) return true
+    } else if (DRAWABLE.has(child.localName)) return true
+  }
+  return false
+}
+
 function objectName(element: Element) {
   const named =
     element.getAttribute('data-name') ?? (/^svg_\d+$/.test(element.id) ? '' : element.id)
