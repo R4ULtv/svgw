@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "svgw",
+  "workers_dev": false,
+  "routes": [{ "pattern": "svgw.raulcarini.dev", "custom_domain": true }],
+  "main": "src/server.ts",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "secrets": { "required": ["ADMIN_KEY"] },
+  "r2_buckets": [{ "binding": "PROJECTS", "bucket_name": "svgw" }],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+    },
+  },
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api", "/api/*"],
+  },
+}
