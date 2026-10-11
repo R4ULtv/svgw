@@ -35,6 +35,7 @@ import { createFrameTask } from '@/lib/frame-task'
 import { layerRows, layerRowWindow, LAYER_ROW_HEIGHT, type LayerRow } from '@/lib/layer-rows'
 import {
   buildLayerTree,
+  centerSelectionOnArtboard,
   createLayer,
   isBlocked,
   isLayer,
@@ -132,6 +133,7 @@ export const LayersPanel = memo(function LayersPanel({
     // oxlint-disable-next-line react/exhaustive-deps -- Reparenting mutates DOM ancestry without changing the selected elements.
   }, [selected, documentRevision])
   const deleteBinding = useBinding('selection.delete')
+  const centerBinding = useBinding('selection.center')
   const undoBinding = useBinding('edit.undo')
   const redoBinding = useBinding('edit.redo')
 
@@ -382,6 +384,10 @@ export const LayersPanel = memo(function LayersPanel({
       if (node.kind === 'layer') deleteLayer(node)
       else if (selected.has(node.element)) act(() => editor!.deleteSelectedElements())
       else deleteObject(node)
+    } else if (matches(centerBinding) && selected.size) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!event.repeat && centerSelectionOnArtboard(editor!)) onChange()
     } else if (matches(undoBinding) || matches(redoBinding)) {
       event.preventDefault()
       event.stopPropagation()

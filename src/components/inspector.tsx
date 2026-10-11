@@ -9,6 +9,7 @@ import {
   MousePointerClickIcon,
   ScanIcon,
   SunIcon,
+  TargetIcon,
 } from 'lucide-react'
 import { PaintField } from '@/components/color-picker'
 import type { SelectionStore } from '@/lib/selection-store'
@@ -25,6 +26,7 @@ import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { CommandShortcut } from './commands'
 
 export type Backdrop = 'checker' | 'light' | 'dark'
 
@@ -40,6 +42,7 @@ interface InspectorProps {
   onResize: (width: number, height: number) => void
   /** Crops the canvas to the visible artwork. */
   onFitToArtwork: () => void
+  onCenterSelection: () => void
 }
 
 const backdrops: { value: Backdrop; label: string; icon: typeof SunIcon }[] = [
@@ -57,6 +60,7 @@ export function Inspector({
   onCommit,
   onResize,
   onFitToArtwork,
+  onCenterSelection,
 }: InspectorProps) {
   const selection = useSyncExternalStore(
     selectionStore.subscribe,
@@ -134,6 +138,11 @@ export function Inspector({
                 Reset opacity
               </Button>
             )}
+            <Button variant="outline" size="sm" onClick={onCenterSelection}>
+              <TargetIcon />
+              Center on artboard
+              <CommandShortcut command="selection.center" className="ml-auto" />
+            </Button>
           </>
         ) : (
           <div className="flex items-start gap-2.5 text-xs text-muted-foreground">

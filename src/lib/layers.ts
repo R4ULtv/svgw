@@ -452,6 +452,47 @@ export function artworkBounds(content: SVGSVGElement, elements: Element[]) {
     : null
 }
 
+/** Centers the selection as a whole on the artboard, preserving spacing and transforms. */
+export function centerSelectionOnArtboard(editor: SvgEditor) {
+  const selected = editor.getSelectedElements().filter((element): element is Element => !!element)
+  if (!selected.length || selected.some(isBlocked)) return false
+  // A selected ancestor already moves its descendants.
+  const elements = selected.filter(
+    (element) => !selected.some((other) => other !== element && other.contains(element)),
+  )
+  const content = editor.getSvgContent()
+  const matrix = content.getScreenCTM()
+  const box = artworkBounds(content, elements)
+  if (!matrix || !box) return false
+  const dx = editor.contentW / 2 - (box.x + box.width / 2)
+  const dy = editor.contentH / 2 - (box.y + box.height / 2)
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return false
+
+  // Convert the document translation into each parent's coordinates before changing anything.
+  const moves = elements.map((element) => {
+    const parent = (element.parentNode as SVGGraphicsElement | null)?.getScreenCTM?.()
+    if (!parent) return null
+    const local = parent.inverse().multiply(matrix)
+    const x = local.a * dx + local.c * dy
+    const y = local.b * dx + local.d * dy
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+    return { element, x, y, transform: element.getAttribute('transform') }
+  })
+  if (moves.some((move) => !move)) return false
+
+  const { BatchCommand, ChangeElementCommand } = editor.history
+  const batch = new BatchCommand('Center Selection on Artboard')
+  for (const move of moves) {
+    if (!move) continue
+    const { element, x, y, transform } = move
+    element.setAttribute('transform', `translate(${x} ${y})${transform ? ` ${transform}` : ''}`)
+    batch.addSubCommand(new ChangeElementCommand(element, { transform }))
+    editor.gettingSelectorManager().requestSelector(element).resize()
+  }
+  editor.undoMgr.addCommandToHistory(batch)
+  return true
+}
+
 /**
  * Crops the canvas to the visible artwork on every layer, as one undo step. SVG-Edit's own
  * `setResolution('fit')` only measures and moves the current layer, which misaligns the others.

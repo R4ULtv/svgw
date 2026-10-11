@@ -134,6 +134,12 @@ export const commands = {
     scope: 'selection',
     binding: keys('Backspace', 'Delete'),
   },
+  'selection.center': {
+    title: 'Center selection on artboard',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Shift+C'),
+  },
   'selection.nudgeLeft': {
     title: 'Nudge left 1px',
     group: 'Selection',
