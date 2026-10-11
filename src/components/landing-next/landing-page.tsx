@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Link } from '@tanstack/react-router'
 import {
   ArrowRightIcon,
   CheckIcon,
@@ -63,7 +64,7 @@ export function LandingNextPage({ onCreate, onImport, busy, projects }: LandingP
           aria-label="Main navigation"
           className="next-nav-links flex items-center gap-7 text-muted-foreground text-[13px] [&_>_a]:flex [&_>_a]:items-center [&_>_a]:min-h-10 [&_>_a:hover]:text-foreground max-[761px]:hidden"
         >
-          <a href="#projects">Projects</a>
+          <Link to="/projects">Projects</Link>
           <a href="#self-host">Self-host</a>
         </nav>
         <div className="next-nav-actions flex items-center ml-auto gap-5 max-[761px]:gap-2">
@@ -321,7 +322,7 @@ function NavigationMenu() {
       >
         <DropdownMenuGroup className="next-menu-mobile-links hidden max-[761px]:block">
           <DropdownMenuLabel className="text-[10px]">Explore</DropdownMenuLabel>
-          <DropdownMenuItem className="min-h-9.5 cursor-pointer" render={<a href="#projects" />}>
+          <DropdownMenuItem className="min-h-9.5 cursor-pointer" render={<Link to="/projects" />}>
             <FolderOpenIcon />
             Projects
           </DropdownMenuItem>

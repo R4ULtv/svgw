@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react'
+import { Link } from '@tanstack/react-router'
 import {
   ArrowDownIcon,
   ArrowRightIcon,
@@ -96,7 +97,7 @@ export function LandingPage({
           aria-label="Main navigation"
           className="landing-nav-links flex items-center gap-7 text-[13px] text-muted-foreground [&_a]:inline-flex [&_a]:items-center [&_a]:min-h-10 [&_a:hover]:text-foreground max-[761px]:hidden"
         >
-          <a href="#projects">Projects</a>
+          <Link to="/projects">Projects</Link>
           <a href="#self-host">Self-host</a>
         </nav>
         <div className="landing-nav-actions flex items-center gap-5 ml-auto max-[761px]:gap-2 max-[481px]:gap-2">
@@ -202,7 +203,7 @@ function LandingMenu() {
       >
         <DropdownMenuGroup className="landing-menu-mobile-links hidden max-[761px]:block">
           <DropdownMenuLabel className="text-[10px] tracking-[.04em]">Explore</DropdownMenuLabel>
-          <DropdownMenuItem className="min-h-9.5 cursor-pointer" render={<a href="#projects" />}>
+          <DropdownMenuItem className="min-h-9.5 cursor-pointer" render={<Link to="/projects" />}>
             <FolderOpenIcon />
             Projects
           </DropdownMenuItem>

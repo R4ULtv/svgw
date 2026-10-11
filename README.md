@@ -37,7 +37,9 @@ pnpm dev
 
 `pnpm key` writes the key to `.svgw-admin-key` and configures `.dev.vars`. Both files are ignored by Git, and the command never prints the key. It keeps an existing key unless you pass `--rotate`.
 
-Click **Login** in the editor header, or press **Cmd/Ctrl+Shift+K**, and enter the key. On macOS, copy it with `pbcopy < .svgw-admin-key`. The browser keeps it in `sessionStorage` for the tab; **Logout** removes it.
+Open **Projects** from the homepage to browse local projects at `/projects`. Log in there to also see remote projects. You can create a project, import an SVG, or search either library from this page.
+
+Click **Login** in the projects page or editor header, or press **Cmd/Ctrl+Shift+K**, and enter the key. On macOS, copy it with `pbcopy < .svgw-admin-key`. The browser keeps it in `sessionStorage` for the tab; **Logout** removes it.
 
 ## Self-hosting on Cloudflare
 
@@ -130,7 +132,7 @@ The test runner combines editor and color regression tests with storage API inte
 Built with React, TypeScript, TanStack Start, Tailwind CSS, and shadcn/ui. SVG-Edit manages the document and edit history, IndexedDB stores local drafts, DOMPurify sanitizes SVG imports, and SVGO runs optimized exports in a browser Web Worker.
 
 - `src/components/` — editor UI, landing pages, and shared components.
-- `src/routes/` — the homepage and `/project/<id>` editor routes.
+- `src/routes/` — the homepage, `/projects` library, and `/project/<id>` editor routes.
 - `src/lib/` — the editor adapter, project persistence, cloud access, and export helpers.
 - `src/server/worker.ts` — storage API and project access control.
 - `src/server.ts` — combined Cloudflare/TanStack entry point.

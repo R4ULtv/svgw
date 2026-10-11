@@ -96,15 +96,15 @@ export function WorkspaceHeader({
         <TooltipTrigger
           render={
             <Link
-              to="/"
-              aria-label="svgw home"
+              to="/projects"
+              aria-label="All projects"
               className="grid size-8 shrink-0 place-items-center outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           }
         >
           <Logo className="size-7" />
         </TooltipTrigger>
-        <TooltipContent side="bottom">Back to home</TooltipContent>
+        <TooltipContent side="bottom">Back to projects</TooltipContent>
       </Tooltip>
       <span className="hidden h-6 w-px shrink-0 bg-border sm:block" aria-hidden="true" />
       <Button
@@ -189,6 +189,10 @@ export function WorkspaceHeader({
                 <FolderOpenIcon />
                 Browse projects
                 <Shortcut command="navigate.projects" />
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link to="/projects" />}>
+                <FolderOpenIcon />
+                All projects
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

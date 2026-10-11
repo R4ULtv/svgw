@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LandingNextRouteImport } from './routes/landing-next'
+import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ProjectIdRouteImport } from './routes/project.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +24,11 @@ const LandingNextRoute = LandingNextRouteImport.update({
   path: '/landing-next',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectIdRoute = ProjectIdRouteImport.update({
   id: '/project/$id',
   path: '/project/$id',
@@ -32,30 +38,34 @@ const ProjectIdRoute = ProjectIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/landing-next': typeof LandingNextRoute
+  '/projects': typeof ProjectsRoute
   '/project/$id': typeof ProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/landing-next': typeof LandingNextRoute
+  '/projects': typeof ProjectsRoute
   '/project/$id': typeof ProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/landing-next': typeof LandingNextRoute
+  '/projects': typeof ProjectsRoute
   '/project/$id': typeof ProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/landing-next' | '/project/$id'
+  fullPaths: '/' | '/landing-next' | '/projects' | '/project/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/landing-next' | '/project/$id'
-  id: '__root__' | '/' | '/landing-next' | '/project/$id'
+  to: '/' | '/landing-next' | '/projects' | '/project/$id'
+  id: '__root__' | '/' | '/landing-next' | '/projects' | '/project/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LandingNextRoute: typeof LandingNextRoute
+  ProjectsRoute: typeof ProjectsRoute
   ProjectIdRoute: typeof ProjectIdRoute
 }
 
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LandingNextRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/project/$id': {
       id: '/project/$id'
       path: '/project/$id'
@@ -88,6 +105,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LandingNextRoute: LandingNextRoute,
+  ProjectsRoute: ProjectsRoute,
   ProjectIdRoute: ProjectIdRoute,
 }
 export const routeTree = rootRouteImport
