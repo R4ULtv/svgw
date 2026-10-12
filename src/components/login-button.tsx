@@ -42,7 +42,7 @@ export function LoginButton() {
             <DialogDescription>
               {session.admin
                 ? 'You are logged in. Changes can be saved online.'
-                : 'Enter the key to save projects online. Your key stays in this tab for the session.'}
+                : 'Enter the key to save projects online. You’ll stay logged in on this browser for 7 days, unless you log out.'}
             </DialogDescription>
           </DialogHeader>
           {session.admin ? (

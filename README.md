@@ -39,7 +39,7 @@ pnpm dev
 
 Open **Projects** from the homepage to browse local projects at `/projects`. Log in there to also see remote projects. You can create a project, import a design, or search either library from this page.
 
-Click **Login** in the projects page or editor header, or press **Cmd/Ctrl+Shift+K**, and enter the key. On macOS, copy it with `pbcopy < .svgw-admin-key`. The browser keeps it in `sessionStorage` for the tab; **Logout** removes it.
+Click **Login** in the projects page or editor header, or press **Cmd/Ctrl+Shift+K**, and enter the key. On macOS, copy it with `pbcopy < .svgw-admin-key`. The browser saves a signed session token in `localStorage` for **7 days**, so you stay logged in across tabs and browser restarts. The admin key itself is not saved. **Logout** removes the session from this browser and its open tabs; rotating the admin key invalidates all existing sessions. If browser storage is blocked, access lasts only while the tab remains open.
 
 ## Self-hosting on Cloudflare
 

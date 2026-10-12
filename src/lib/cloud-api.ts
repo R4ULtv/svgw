@@ -6,6 +6,7 @@ import type {
   VersionInfo,
   Visibility,
 } from './cloud-types'
+import type { SavedAdminSession } from './saved-admin-session'
 
 export class CloudError extends Error {
   constructor(
@@ -61,6 +62,14 @@ export async function cloudRequest<T>(
 
 export const cloudApi = {
   admin: (key: string) => cloudRequest<{ admin: boolean; configured: boolean }>('/admin', key),
+  login: (key: string) =>
+    cloudRequest<{ admin: boolean; configured: boolean; session: SavedAdminSession }>(
+      '/admin',
+      key,
+      {
+        method: 'POST',
+      },
+    ),
   async list(key: string) {
     const projects: RemoteProject[] = []
     let cursor: string | null = null

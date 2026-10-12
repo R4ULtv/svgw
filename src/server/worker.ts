@@ -6,6 +6,7 @@ import {
   type VersionInfo,
   type Visibility,
 } from '../lib/cloud-types'
+import { createAdminSession, verifyAdminSession } from './admin-session'
 
 interface Manifest extends RemoteProject {
   publishedName: string | null
@@ -45,7 +46,7 @@ function json(value: unknown, status = 200, headers?: HeadersInit) {
   })
 }
 
-async function authorized(request: Request, env: Env) {
+async function authorized(request: Request, env: Env, allowSession = true) {
   const header = request.headers.get('Authorization')
   if (!header) return false
   if (!header.startsWith('Bearer ') || header.length > 1024 || !env.ADMIN_KEY)
@@ -56,9 +57,9 @@ async function authorized(request: Request, env: Env) {
     crypto.subtle.digest('SHA-256', encoder.encode(header.slice(7))),
     crypto.subtle.digest('SHA-256', encoder.encode(env.ADMIN_KEY)),
   ])
-  if (!crypto.subtle.timingSafeEqual(supplied, expected))
-    throw new HttpError(401, 'Invalid admin key.')
-  return true
+  if (crypto.subtle.timingSafeEqual(supplied, expected)) return true
+  if (allowSession && (await verifyAdminSession(header.slice(7), env.ADMIN_KEY))) return true
+  throw new HttpError(401, 'Invalid or expired remote access. Log in again.')
 }
 
 function requireAdmin(admin: boolean, env: Env) {
@@ -230,6 +231,15 @@ async function deleteSnapshots(bucket: R2Bucket, id: string) {
 
 async function api(request: Request, env: Env, context: ExecutionContext) {
   const url = new URL(request.url)
+  if (url.pathname === '/api/admin' && request.method === 'POST') {
+    // Only the admin key can start a new week; a session cannot renew itself indefinitely.
+    requireAdmin(await authorized(request, env, false), env)
+    return json({
+      admin: true,
+      configured: true,
+      session: await createAdminSession(env.ADMIN_KEY),
+    })
+  }
   const admin = await authorized(request, env)
   if (url.pathname === '/api/admin' && request.method === 'GET')
     return json({ admin, configured: Boolean(env.ADMIN_KEY) })
