@@ -227,6 +227,13 @@ export function promoteLayers(svg: string) {
   return changed ? new XMLSerializer().serializeToString(root) : svg
 }
 
+/** A stored project's SVG as exported files have it, without svgw-only metadata. */
+export function exportedSvg(svg: string) {
+  const root = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement
+  exportLayers(root, { forExport: true })
+  return new XMLSerializer().serializeToString(root)
+}
+
 /**
  * Converts SVG-Edit layers in a serialized document root to Illustrator's layer markup.
  * With `forExport`, also removes svgw-only metadata such as lock state.

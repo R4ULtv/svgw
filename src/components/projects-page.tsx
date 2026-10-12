@@ -1,13 +1,9 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  ArrowUpRightIcon,
   CloudIcon,
   FileImageIcon,
   FolderOpenIcon,
-  GlobeIcon,
-  HardDriveIcon,
-  LockKeyholeIcon,
   MoonIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -18,20 +14,55 @@ import {
 import { toast } from 'sonner'
 import { useAdminSession } from '@/lib/admin-session'
 import { cloudApi, CloudError } from '@/lib/cloud-api'
-import type { RemoteProject } from '@/lib/cloud-types'
-import { timeAgo } from '@/lib/format'
+import { copyFromRemote, hasUnsavedOnlineChanges, linkAfter, uploadDraft } from '@/lib/cloud-sync'
+import type {
+  CloudLink,
+  RemoteMutation,
+  RemoteProject,
+  VersionInfo,
+  Visibility,
+} from '@/lib/cloud-types'
+import { exportedSvg } from '@/lib/layers'
 import { projectLibrary, type ProjectEntry } from '@/lib/project-library'
-import { createProject, listProjects, saveProject, type Project } from '@/lib/projects'
-import { blankSvg, sampleSvg } from '@/lib/svg'
+import {
+  createProject,
+  deleteProject,
+  getProject,
+  listProjects,
+  projectRouteId,
+  saveProject,
+  type Project,
+} from '@/lib/projects'
+import { blankSvg, downloadSvg, sampleSvg } from '@/lib/svg'
 import { PROJECT_ACCEPT, type ImportedDocument } from '@/lib/project-import'
+import { ProjectCard, type ProjectActions } from './project-card'
 import { ProjectImportDialog, type ImportRequest } from './project-import-dialog'
-import { useCommands } from './commands'
+import { useCommands, useCommandScope } from './commands'
+import { ProjectRenameDialog } from './project-rename-dialog'
 import { LoginButton } from './login-button'
 import { Logo } from './logo'
 import { useTheme } from './theme'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Spinner } from './ui/spinner'
+import { VersionHistoryDialog } from './version-history-dialog'
+
+type PendingDelete =
+  /** `online`: the project is also saved online, so only this device's copy goes. */
+  { kind: 'local'; project: Project; online: boolean } | { kind: 'remote'; project: RemoteProject }
+
+const message = (cause: unknown, fallback: string) =>
+  cause instanceof Error ? cause.message : fallback
 
 export function ProjectsPage() {
   const navigate = useNavigate()
@@ -49,6 +80,18 @@ export function ProjectsPage() {
   const creatingRef = useRef(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [importRequest, setImportRequest] = useState<ImportRequest | null>(null)
+  const [renaming, setRenaming] = useState<Project | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  useCommandScope('dialog', Boolean(pendingDelete))
+  // Projects with an online action in flight; their menus wait for it.
+  const [working, setWorking] = useState<ReadonlySet<string>>(new Set())
+  const [history, setHistory] = useState<{
+    entry: ProjectEntry
+    versions: VersionInfo[]
+    revision: string | null
+    loading: boolean
+    error: string | null
+  } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -123,23 +166,8 @@ export function ProjectsPage() {
     setCreating(true)
     try {
       let last: Project | undefined
-      for (const document of documents ?? [{ name, svg, guides: undefined }]) {
-        const project = createProject(document.name, document.svg)
-        if (document.guides) project.guides = document.guides
-        if (session.admin)
-          project.cloud = {
-            id: project.id,
-            mode: 'admin',
-            revision: null,
-            versionId: '',
-            savedDocument: '',
-            visibility: 'private',
-            publishedVersionId: null,
-          }
-        await saveProject(project)
-        setLocals((locals) => [project, ...locals])
-        last = project
-      }
+      for (const document of documents ?? [{ name, svg, guides: undefined }])
+        last = await addProject(document.name, document.svg, document.guides)
       if (last) await navigate({ to: '/project/$id', params: { id: last.id } })
     } catch (cause) {
       if (documents) throw cause
@@ -152,15 +180,286 @@ export function ProjectsPage() {
     }
   }
 
+  /** Saves a new project on this device. In an admin session it also starts a private online draft. */
+  async function addProject(name: string, svg: string, guides?: Project['guides']) {
+    const project = createProject(name, svg)
+    if (guides) project.guides = guides
+    if (session.admin)
+      project.cloud = {
+        id: project.id,
+        mode: 'admin',
+        revision: null,
+        versionId: '',
+        savedDocument: '',
+        visibility: 'private',
+        publishedVersionId: null,
+      }
+    await saveProject(project)
+    setLocals((locals) => [project, ...locals])
+    return project
+  }
+
+  async function duplicate(project: Project) {
+    try {
+      await addProject(`${project.name || 'Untitled'} copy`, project.svg, project.guides)
+      toast.success(`Duplicated “${project.name || 'Untitled'}”`)
+    } catch (cause) {
+      toast.error('Could not duplicate project', { description: message(cause, 'Try again.') })
+    }
+  }
+
+  async function rename(project: Project, name: string) {
+    const next = { ...project, name, updatedAt: Date.now() }
+    try {
+      await saveProject(next)
+      setLocals((locals) => locals.map((item) => (item.id === next.id ? next : item)))
+    } catch (cause) {
+      toast.error('Could not rename project', {
+        description: message(cause, 'Browser storage is unavailable.'),
+      })
+    }
+  }
+
+  async function remove(project: Project, online: boolean) {
+    try {
+      await deleteProject(project.id)
+      setLocals((locals) => locals.filter((item) => item.id !== project.id))
+      toast.success(
+        online
+          ? `Removed “${project.name || 'Untitled'}” from this device`
+          : `Deleted “${project.name || 'Untitled'}”`,
+      )
+    } catch (cause) {
+      toast.error('Could not delete project', {
+        description: message(cause, 'Browser storage is unavailable.'),
+      })
+    }
+  }
+
+  function removeRemote(project: RemoteProject) {
+    void online(project.id, 'Could not delete online project', async () => {
+      const key = session.key.current
+      const current = await cloudApi.get(project.id, key)
+      await cloudApi.delete(project.id, key, current.revision!)
+      // Copies on this device stay, as ordinary local projects.
+      const copies = (await listProjects()).filter((local) => local.cloud?.id === project.id)
+      for (const local of copies) await persistLink(local.id, undefined)
+      setRemotes((list) => list.filter((item) => item.id !== project.id))
+      toast.success('Online project deleted', {
+        description: copies.length ? 'The copy on this device is still available.' : undefined,
+      })
+    })
+  }
+
+  /** Runs an online action on one project, reporting failures; a rejected login locks the session. */
+  async function online(id: string, title: string, operation: () => Promise<void>) {
+    setWorking((ids) => new Set(ids).add(id))
+    try {
+      await operation()
+    } catch (cause) {
+      if (cause instanceof CloudError && cause.status === 401) session.lock()
+      toast.error(title, { description: message(cause, 'Try again.') })
+    } finally {
+      setWorking((ids) => {
+        const next = new Set(ids)
+        next.delete(id)
+        return next
+      })
+    }
+  }
+
+  /** Stores a link on a local copy, as the editor does, keeping its current content. */
+  async function persistLink(localId: string, link: CloudLink | undefined) {
+    const stored = await getProject(localId)
+    if (!stored) throw new Error('The project is no longer on this device.')
+    const next = { ...stored, cloud: link }
+    await saveProject(next)
+    setLocals((list) => list.map((item) => (item.id === localId ? next : item)))
+    return next
+  }
+
+  function upsertRemote(project: RemoteProject) {
+    setRemotes((list) => [project, ...list.filter((item) => item.id !== project.id)])
+  }
+
+  /**
+   * Applies an online change made from revision `from` to this device's copies, so the editor
+   * doesn't report a conflict. A copy already behind `from` keeps its link: it really is behind.
+   */
+  async function syncCopies(from: string, result: RemoteMutation) {
+    upsertRemote(result.project)
+    for (const local of await listProjects())
+      if (
+        local.cloud?.id === result.project.id &&
+        local.cloud.mode === 'admin' &&
+        local.cloud.revision === from
+      )
+        await persistLink(local.id, linkAfter(local.cloud, result))
+  }
+
+  /** Uploads this device's newer changes to a project's online draft. */
+  async function upload(project: Project) {
+    const stored = (await getProject(project.id)) ?? project
+    await uploadDraft(
+      stored,
+      session.key.current,
+      async (link) => void (await persistLink(stored.id, link)),
+      (result) => upsertRemote(result.project),
+    )
+  }
+
+  /** The online project's current state, after uploading this device's newer changes. */
+  async function latestOnline(entry: ProjectEntry) {
+    if (entry.local && hasUnsavedOnlineChanges(entry.local)) await upload(entry.local)
+    return cloudApi.get(entry.id, session.key.current)
+  }
+
+  function publish(entry: ProjectEntry) {
+    void online(entry.id, 'Could not publish', async () => {
+      const current = await latestOnline(entry)
+      const result = await cloudApi.publish(
+        entry.id,
+        session.key.current,
+        current.versionId,
+        current.revision!,
+      )
+      await syncCopies(current.revision!, result)
+      toast.success('Published', { description: 'The public link now shows the latest version.' })
+    })
+  }
+
+  function changeVisibility(entry: ProjectEntry, visibility: Visibility) {
+    void online(entry.id, 'Could not change visibility', async () => {
+      const current = await cloudApi.get(entry.id, session.key.current)
+      const result = await cloudApi.visibility(
+        entry.id,
+        session.key.current,
+        visibility,
+        current.revision!,
+      )
+      await syncCopies(current.revision!, result)
+      toast.success(visibility === 'public' ? 'Project is public' : 'Project is private')
+    })
+  }
+
+  async function copyLink(id: string) {
+    const url = new URL(`/project/${id}`, location.origin).toString()
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Public link copied')
+    } catch {
+      toast('Public project link', { description: url, duration: 15_000 })
+    }
+  }
+
+  async function loadHistory(entry: ProjectEntry) {
+    setHistory({ entry, versions: [], revision: null, loading: true, error: null })
+    try {
+      const result = await cloudApi.versions(entry.id, session.key.current)
+      setHistory((current) =>
+        current?.entry.id === entry.id
+          ? { ...current, versions: result.versions, revision: result.revision, loading: false }
+          : current,
+      )
+    } catch (cause) {
+      if (cause instanceof CloudError && cause.status === 401) session.lock()
+      setHistory((current) =>
+        current?.entry.id === entry.id
+          ? { ...current, loading: false, error: message(cause, 'Could not load versions.') }
+          : current,
+      )
+    }
+  }
+
+  function pin(version: VersionInfo) {
+    const current = history
+    if (!current?.revision) return
+    void online(current.entry.id, 'Could not update the version', async () => {
+      const result = await cloudApi.pin(
+        current.entry.id,
+        session.key.current,
+        version.id,
+        !version.pinned,
+        current.revision!,
+      )
+      await syncCopies(current.revision!, result)
+      await loadHistory({ ...current.entry, remote: result.project })
+    })
+  }
+
+  function restore(version: VersionInfo) {
+    const current = history
+    if (!current?.revision) return
+    void online(current.entry.id, 'Could not restore the version', async () => {
+      const from = current.revision!
+      const result = await cloudApi.restore(current.entry.id, session.key.current, version.id, from)
+      upsertRemote(result.project)
+      // Bring an up-to-date copy on this device to the restored version. A copy with newer
+      // changes is left alone; the editor offers to reload it.
+      const copies = (await listProjects()).filter(
+        (local) =>
+          local.cloud?.id === current.entry.id &&
+          local.cloud.mode === 'admin' &&
+          local.cloud.revision === from &&
+          !hasUnsavedOnlineChanges(local),
+      )
+      if (copies.length) {
+        const restored = await cloudApi.get(current.entry.id, session.key.current)
+        for (const local of copies) {
+          const next = copyFromRemote(restored, 'admin', local)
+          await saveProject(next)
+          setLocals((list) => list.map((item) => (item.id === next.id ? next : item)))
+        }
+      }
+      await loadHistory({ ...current.entry, remote: result.project })
+      toast.success('Version restored', {
+        description: 'A new snapshot was created. The published version is unchanged.',
+      })
+    })
+  }
+
+  async function download(entry: ProjectEntry) {
+    try {
+      const svg =
+        entry.local?.svg ?? (await cloudApi.get(entry.id, session.key.current)).document.svg
+      downloadSvg(exportedSvg(svg), entry.name)
+    } catch (cause) {
+      toast.error('Could not download SVG', { description: message(cause, 'Try again.') })
+    }
+  }
+
+  const actions: ProjectActions = {
+    onRename: setRenaming,
+    onDuplicate: (project) => void duplicate(project),
+    onDownload: (entry) => void download(entry),
+    onDelete: (project) =>
+      setPendingDelete({
+        kind: 'local',
+        project,
+        online:
+          session.admin &&
+          project.cloud?.mode === 'admin' &&
+          remotes.some((remote) => remote.id === project.cloud!.id),
+      }),
+    onSaveOnline: (project) =>
+      void online(projectRouteId(project), 'Could not save online', async () => {
+        await upload(project)
+        toast.success('Saved online')
+      }),
+    onPublish: publish,
+    onVisibility: changeVisibility,
+    onCopyLink: (id) => void copyLink(id),
+    onHistory: (entry) => void loadHistory(entry),
+    onDeleteRemote: (project) => setPendingDelete({ kind: 'remote', project }),
+  }
+
   useCommands({
     'file.newBlank': () => void create(),
     'file.newSample': () => void create({ svg: sampleSvg, name: 'Sample logo' }),
   })
 
-  const localProjects = projectLibrary(locals, [], session.admin)
-  const remoteProjects = session.admin
-    ? projectLibrary(locals, remotes, true).filter((project) => project.remote)
-    : []
+  // One entry per project, whether it is on this device, online, or both.
+  const allProjects = projectLibrary(locals, session.admin ? remotes : [], session.admin)
   const query = search.trim().toLocaleLowerCase()
   const matches = (project: ProjectEntry) =>
     (project.name || 'Untitled').toLocaleLowerCase().includes(query)
@@ -255,45 +554,32 @@ export function ProjectsPage() {
         </div>
 
         <ProjectSection
-          title="On this device"
-          description="Local copies saved in this browser."
-          projects={localProjects.filter(matches)}
-          total={localProjects.length}
-          loading={localLoading}
-          error={localError}
+          projects={allProjects.filter(matches)}
+          total={allProjects.length}
+          loading={loading}
+          errors={[localError, remoteError]}
           searching={Boolean(query)}
+          admin={session.admin}
+          working={working}
+          actions={actions}
         />
 
-        <div className="mt-12 border-t pt-9">
-          {session.admin || !session.authReady ? (
-            <ProjectSection
-              remote
-              title="Remote projects"
-              description="Projects saved online on your instance."
-              projects={remoteProjects.filter(matches)}
-              total={remoteProjects.length}
-              loading={remoteLoading}
-              error={remoteError}
-              searching={Boolean(query)}
-            />
-          ) : (
-            <section
-              aria-labelledby="remote-login-heading"
-              className="flex items-start gap-4 border border-dashed bg-landing-surface p-6 sm:p-8"
-            >
-              <CloudIcon className="mt-1 size-6 shrink-0 text-muted-foreground" />
-              <div>
-                <h2 id="remote-login-heading" className="text-base font-medium">
-                  Log in to see remote projects.
-                </h2>
-                <p className="mt-2 max-w-120 text-sm leading-relaxed text-muted-foreground">
-                  Access the projects saved on your instance. Your local projects are always
-                  available here.
-                </p>
-              </div>
-            </section>
-          )}
-        </div>
+        {session.authReady && !session.admin && (
+          <section
+            aria-labelledby="remote-login-heading"
+            className="mt-12 flex items-start gap-4 border border-dashed bg-landing-surface p-6 sm:p-8"
+          >
+            <CloudIcon className="mt-1 size-6 shrink-0 text-muted-foreground" />
+            <div>
+              <h2 id="remote-login-heading" className="text-base font-medium">
+                Log in to see projects saved online.
+              </h2>
+              <p className="mt-2 max-w-120 text-sm leading-relaxed text-muted-foreground">
+                They appear in this list next to the ones on this device, marked with a cloud.
+              </p>
+            </div>
+          </section>
+        )}
       </main>
 
       <input
@@ -314,134 +600,169 @@ export function ProjectsPage() {
         onClose={() => setImportRequest(null)}
         onImport={(documents) => create({ documents })}
       />
+      <ProjectRenameDialog
+        open={Boolean(renaming)}
+        onOpenChange={(open) => {
+          if (!open) setRenaming(null)
+        }}
+        name={renaming?.name ?? ''}
+        onRename={(name) => {
+          if (renaming) void rename(renaming, name)
+          setRenaming(null)
+        }}
+      />
+      <VersionHistoryDialog
+        open={Boolean(history)}
+        onOpenChange={(open) => {
+          if (!open) setHistory(null)
+        }}
+        versions={history?.versions ?? []}
+        loading={history?.loading ?? false}
+        error={history?.error ?? null}
+        working={history ? working.has(history.entry.id) : false}
+        latestVersionId={history?.entry.remote?.latestVersionId}
+        publishedVersionId={history?.entry.remote?.publishedVersionId}
+        onPin={pin}
+        onRestore={restore}
+      />
+      <DeleteDialog
+        pending={pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={(pending) => {
+          if (pending.kind === 'local') void remove(pending.project, pending.online)
+          else removeRemote(pending.project)
+          setPendingDelete(null)
+        }}
+      />
     </div>
   )
 }
 
+function DeleteDialog({
+  pending,
+  onClose,
+  onConfirm,
+}: {
+  pending: PendingDelete | null
+  onClose: () => void
+  onConfirm: (pending: PendingDelete) => void
+}) {
+  // Keep the last request while the dialog animates closed.
+  const last = useRef(pending)
+  if (pending) last.current = pending
+  const shown = last.current
+  const name = shown?.project.name || 'Untitled'
+  const online = shown?.kind === 'local' && shown.online
+  return (
+    <AlertDialog
+      open={Boolean(pending)}
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {shown?.kind === 'remote'
+              ? `Delete online “${name}”?`
+              : online
+                ? `Remove “${name}” from this device?`
+                : `Delete “${name}”?`}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {shown?.kind === 'remote'
+              ? 'This deletes the remote project and its version history. Local copies on this device are kept.'
+              : online
+                ? 'This removes the copy saved in this browser. The project stays online and in this list; changes not yet saved online are lost.'
+                : 'This removes the project from this browser. It can’t be undone, so download the SVG first if you want to keep it.'}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={() => {
+              if (pending) onConfirm(pending)
+            }}
+          >
+            {shown?.kind === 'remote' ? 'Delete online' : online ? 'Remove' : 'Delete'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
 function ProjectSection({
-  title,
-  description,
   projects,
   total,
   loading,
-  error,
+  errors,
   searching,
-  remote = false,
+  admin,
+  working,
+  actions,
 }: {
-  title: string
-  description: string
   projects: ProjectEntry[]
   total: number
   loading: boolean
-  error: string | null
+  errors: (string | null)[]
   searching: boolean
-  remote?: boolean
+  admin: boolean
+  working: ReadonlySet<string>
+  actions: ProjectActions
 }) {
-  const headingId = remote ? 'remote-projects-heading' : 'local-projects-heading'
   return (
-    <section aria-labelledby={headingId} aria-busy={loading}>
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h2 id={headingId} className="flex items-center gap-2 text-base font-medium">
-            {remote ? (
-              <CloudIcon className="size-4 text-muted-foreground" />
-            ) : (
-              <HardDriveIcon className="size-4 text-muted-foreground" />
-            )}
-            {title}
-            <span className="ml-1 border px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
-              {searching ? `${projects.length} / ${total}` : total}
-            </span>
-          </h2>
-          <p className="mt-1.5 text-xs text-muted-foreground">{description}</p>
-        </div>
+    <section aria-labelledby="projects-heading" aria-busy={loading}>
+      <div className="mb-5">
+        <h2 id="projects-heading" className="flex items-center gap-2 text-base font-medium">
+          All projects
+          <span className="ml-1 border px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+            {searching ? `${projects.length} / ${total}` : total}
+          </span>
+        </h2>
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          {admin
+            ? 'Saved in this browser and online. A cloud marks the projects saved online.'
+            : 'Saved in this browser.'}
+        </p>
       </div>
-      {error && (
+      {errors.filter(Boolean).map((error) => (
         <p
+          key={error}
           role="status"
           className="mb-4 border border-dashed p-4 text-xs leading-relaxed text-muted-foreground"
         >
           {error}
         </p>
-      )}
+      ))}
       {projects.length ? (
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} remote={remote} />
+            <ProjectCard
+              key={project.id}
+              project={project}
+              admin={admin}
+              busy={working.has(project.id)}
+              actions={actions}
+            />
           ))}
         </ul>
       ) : (
-        !error && (
-          <div
-            role="status"
-            className="flex min-h-40 flex-col items-center justify-center gap-3 border border-dashed p-6 text-center text-sm text-muted-foreground"
-          >
-            {loading ? <Spinner className="size-5" /> : <FileImageIcon className="size-6" />}
-            <p>
-              {loading
-                ? 'Loading projects…'
-                : searching
-                  ? 'No projects match your search.'
-                  : remote
-                    ? 'No remote projects yet. Create a project while logged in, or save one online from the editor.'
-                    : 'No local projects yet. Start a new project or import an SVG or project.'}
-            </p>
-          </div>
-        )
+        <div
+          role="status"
+          className="flex min-h-40 flex-col items-center justify-center gap-3 border border-dashed p-6 text-center text-sm text-muted-foreground"
+        >
+          {loading ? <Spinner className="size-5" /> : <FileImageIcon className="size-6" />}
+          <p>
+            {loading
+              ? 'Loading projects…'
+              : searching
+                ? 'No projects match your search.'
+                : 'No projects yet. Start a new project or import an SVG or project.'}
+          </p>
+        </div>
       )}
     </section>
-  )
-}
-
-function ProjectCard({ project, remote }: { project: ProjectEntry; remote: boolean }) {
-  const svg = project.local?.svg
-  const thumbnail = useMemo(
-    () =>
-      svg === undefined ? null : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
-    [svg],
-  )
-  const isPublic = project.remote?.visibility === 'public'
-  return (
-    <li>
-      <Link
-        to="/project/$id"
-        params={{ id: project.id }}
-        className="group block overflow-hidden border bg-background transition-colors hover:border-muted-foreground/50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-      >
-        <div className="checker relative flex h-44 items-center justify-center overflow-hidden border-b">
-          {thumbnail ? (
-            <img src={thumbnail} alt="" loading="lazy" className="size-full object-contain p-6" />
-          ) : (
-            <FileImageIcon className="size-10 text-muted-foreground/50" />
-          )}
-          <span className="absolute top-3 right-3 border bg-background px-2 py-1 text-[10px] text-muted-foreground">
-            {remote ? (
-              <span className="flex items-center gap-1.5">
-                {isPublic ? (
-                  <GlobeIcon className="size-3" />
-                ) : (
-                  <LockKeyholeIcon className="size-3" />
-                )}
-                {isPublic ? 'Public' : 'Private'}
-              </span>
-            ) : (
-              'Local copy'
-            )}
-          </span>
-        </div>
-        <div className="flex items-center gap-3 p-4">
-          <div className="min-w-0 flex-1">
-            <h3 className="truncate text-sm font-medium">{project.name || 'Untitled'}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Edited {timeAgo(project.updatedAt)}
-            </p>
-          </div>
-          <ArrowUpRightIcon
-            aria-hidden="true"
-            className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
-          />
-        </div>
-      </Link>
-    </li>
   )
 }

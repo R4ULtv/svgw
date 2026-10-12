@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import {
-  FileUpIcon,
-  FolderOpenIcon,
-  LayersIcon,
-  MinusIcon,
-  PlusIcon,
-  UploadIcon,
-} from 'lucide-react'
+import { MinusIcon, PlusIcon, UploadIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   readSelection,
@@ -27,19 +20,17 @@ import {
   type DocumentColor,
 } from '@/lib/document-colors'
 import { createSelectionStore } from '@/lib/selection-store'
+import { copyFromRemote } from '@/lib/cloud-sync'
 import { setSelectionStyle } from '@/lib/selection-style'
 import { syncDocumentSize } from '@/lib/document-dimensions'
 import {
   createProject,
-  deleteProject,
   getProject,
   listProjects,
   projectRouteId,
   saveProject,
-  upsertProject,
   type Project,
 } from '@/lib/projects'
-import { projectLibrary } from '@/lib/project-library'
 import {
   documentKey,
   type CloudLink,
@@ -55,7 +46,7 @@ import {
   centerSelectionOnArtboard,
   createLayer,
   distributeSelection,
-  exportLayers,
+  exportedSvg,
   fitCanvasToArtwork as fitArtwork,
   hasArtwork,
   isBlocked,
@@ -107,7 +98,6 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Spinner } from '@/components/ui/spinner'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   AlertDialog,
@@ -130,7 +120,6 @@ import { CanvasGuides } from './canvas-guides'
 import { CanvasStarter } from './canvas-starter'
 import { LayersPanel } from './layers-panel'
 import { useTheme } from './theme'
-import { ProjectList } from './project-list'
 import { ShortcutsDialog } from './shortcuts-dialog'
 import { ProjectRenameDialog } from './project-rename-dialog'
 import { WorkspaceHeader } from './workspace-header'
@@ -167,7 +156,6 @@ export function Workspace({ projectId }: { projectId: string }) {
   const [importRequest, setImportRequest] = useState<ImportRequest | null>(null)
   const engine = useRef<SvgEditor | null>(null)
   const active = useRef<Project | null>(null)
-  const [projects, setProjects] = useState<Project[]>([])
   const [project, setProject] = useState<Project | null>(null)
   const [ready, setReady] = useState(false)
   const [tool, setTool] = useState<Tool>('select')
@@ -182,7 +170,6 @@ export function Workspace({ projectId }: { projectId: string }) {
   const [backdrop, setBackdrop] = useState<Backdrop>('checker')
   const [exporting, setExporting] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [sidebarTab, setSidebarTab] = useState<'layers' | 'projects'>('layers')
   const [renaming, setRenaming] = useState(false)
   // SVG-Edit's raw mode ('select', 'rect', 'pathedit', …); `tool` is the toolbar's view of it.
   const [mode, setMode] = useState('select')
@@ -223,8 +210,6 @@ export function Workspace({ projectId }: { projectId: string }) {
     sizeRef.current = size
   })
   const [dragging, setDragging] = useState(false)
-  const [pendingDelete, setPendingDelete] = useState<Project | null>(null)
-  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [pendingRemoteDelete, setPendingRemoteDelete] = useState<RemoteProject | null>(null)
 
@@ -284,7 +269,6 @@ export function Workspace({ projectId }: { projectId: string }) {
       if (!stored) return
       const next = { ...stored, cloud: link }
       await saveProject(next)
-      setProjects((list) => upsertProject(list, next))
     })
     writes.current = write.catch(() => {})
     await write
@@ -336,25 +320,10 @@ export function Workspace({ projectId }: { projectId: string }) {
         guides: existing.guides,
       }
       await saveProject(backup)
-      setProjects((list) => upsertProject(list, backup))
       toast('Local edits kept as a backup copy')
     }
-    const next: Project = {
-      ...createProject(result.document.name, sanitizeSvg(result.document.svg)),
-      ...(existing ? { id: existing.id, createdAt: existing.createdAt } : {}),
-      guides: result.document.guides,
-    }
-    next.cloud = {
-      id: result.project.id,
-      mode,
-      revision: result.revision,
-      versionId: result.versionId,
-      savedDocument: documentKey(next),
-      visibility: result.project.visibility,
-      publishedVersionId: result.project.publishedVersionId,
-    }
+    const next = copyFromRemote(result, mode, existing)
     await saveProject(next)
-    setProjects((list) => upsertProject(list, next))
     if (!stillRequested()) throw new Error('The requested project changed.')
     openProject(next, false)
     return next
@@ -376,7 +345,6 @@ export function Workspace({ projectId }: { projectId: string }) {
       .then(async () => {
         await saveProject(next)
         localFailure.current = null
-        setProjects((list) => upsertProject(list, next))
         if (!unsaved.current && active.current?.id === next.id) {
           setProject(active.current)
           setSaveState('saved')
@@ -608,16 +576,6 @@ export function Workspace({ projectId }: { projectId: string }) {
     refreshEditorState()
   }
 
-  function tryOpen(next: Project) {
-    try {
-      openProject(next)
-    } catch (cause) {
-      toast.error('Could not open project', {
-        description: message(cause, 'The document may be damaged.'),
-      })
-    }
-  }
-
   function addProject(name: string, svg: string, importedGuides?: Guides) {
     const next = createProject(name, sanitizeSvg(svg))
     if (importedGuides) next.guides = importedGuides
@@ -633,7 +591,6 @@ export function Workspace({ projectId }: { projectId: string }) {
         publishedVersionId: null,
       }
     openProject(next)
-    setProjects((list) => upsertProject(list, next))
     unsaved.current = true
     void flushSave()
   }
@@ -676,10 +633,7 @@ export function Workspace({ projectId }: { projectId: string }) {
       commitAttribute()
       return serializeDocument(engine.current, { forExport })
     }
-    if (!forExport) return target.svg
-    const root = new DOMParser().parseFromString(target.svg, 'image/svg+xml').documentElement
-    exportLayers(root, { forExport })
-    return new XMLSerializer().serializeToString(root)
+    return forExport ? exportedSvg(target.svg) : target.svg
   }
 
   function duplicateProject(target: Project) {
@@ -690,51 +644,10 @@ export function Workspace({ projectId }: { projectId: string }) {
     }
   }
 
-  async function removeProject(target: Project) {
-    const wasActive = active.current?.id === target.id
-    if (wasActive) {
-      // Drop pending edits so a queued save cannot recreate the project after deletion.
-      window.clearTimeout(saveTimer.current)
-      attributePreview.current!.cancel()
-      unsaved.current = false
-      contentChanged.current = false
-      active.current = null
-    }
-    const removal = writes.current.then(() => deleteProject(target.id))
-    writes.current = removal.catch(() => {})
-    try {
-      await removal
-    } catch (cause) {
-      toast.error('Could not delete project', {
-        description: message(cause, 'Browser storage is unavailable.'),
-      })
-      if (wasActive) tryOpen(target)
-      return
-    }
-    const remaining = projects.filter((item) => item.id !== target.id)
-    setProjects((list) => list.filter((item) => item.id !== target.id))
-    if (wasActive) {
-      if (remaining[0]) {
-        setProject(null)
-        setSelection(null)
-        const id = projectRouteId(remaining[0])
-        if (id === projectId) setOpenAttempt((value) => value + 1)
-        else void navigate({ to: '/project/$id', params: { id } })
-      } else {
-        engine.current?.clearSelection()
-        void navigate({ to: '/' })
-      }
-    }
-    toast.success(`Deleted “${target.name || 'Untitled'}”`)
-  }
-
   function rename(name: string) {
     if (!active.current) return
     active.current = { ...active.current, name }
     setProject(active.current)
-    setProjects((list) =>
-      list.map((item) => (item.id === active.current?.id ? { ...item, name } : item)),
-    )
     markUnsaved(false)
   }
 
@@ -828,7 +741,6 @@ export function Workspace({ projectId }: { projectId: string }) {
           }
           await saveProject(copy)
           if (!stillRequested()) return
-          setProjects((list) => upsertProject(list, copy))
           openProject(copy, false)
         } else throw cause
       }
@@ -952,10 +864,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     let canvas: SvgEditor | undefined
     async function initialize() {
       try {
-        const [{ default: Canvas }, saved] = await Promise.all([
-          import('@svgedit/svgcanvas'),
-          listProjects(),
-        ])
+        const { default: Canvas } = await import('@svgedit/svgcanvas')
         if (cancelled || !host.current) return
         const surface = document.createElement('div')
         host.current.append(surface)
@@ -1014,7 +923,6 @@ export function Workspace({ projectId }: { projectId: string }) {
           refreshEditorState()
         })
         host.current.addEventListener('mousedown', switchLayerOnPress, true)
-        setProjects(saved)
         setReady(true)
       } catch (cause) {
         if (!cancelled)
@@ -1373,7 +1281,7 @@ export function Workspace({ projectId }: { projectId: string }) {
 
   useCommandScope('editor', Boolean(project))
   useCommandScope('selection', Boolean(project && selection))
-  useCommandScope('dialog', sidebarOpen || confirmingDelete || Boolean(pendingRemoteDelete))
+  useCommandScope('dialog', sidebarOpen || Boolean(pendingRemoteDelete))
   const previewing = useCommandHeld('view.preview')
   const spacePan = useCommandHeld('view.pan')
   const [grabbing, setGrabbing] = useState(false)
@@ -1414,14 +1322,9 @@ export function Workspace({ projectId }: { projectId: string }) {
     return Boolean(target)
   }
 
-  function showSidebar(tab: 'layers' | 'projects') {
-    setSidebarTab(tab)
+  function showLayers() {
     if (!window.matchMedia('(min-width: 768px)').matches) setSidebarOpen(true)
-    else
-      requestAnimationFrame(() => {
-        if (tab === 'layers' && focusFirst('aside[aria-label="Sidebar"] [role="tree"]')) return
-        focusFirst(`aside[aria-label="Sidebar"] [data-sidebar-tab="${tab}"]`)
-      })
+    else requestAnimationFrame(() => focusFirst('aside[aria-label="Sidebar"] [role="tree"]'))
   }
 
   useCommands({
@@ -1478,7 +1381,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     'selection.nudgeRightFar': () => nudge(10, 0),
     'selection.nudgeUpFar': () => nudge(0, -10),
     'selection.nudgeDownFar': () => nudge(0, 10),
-    'navigate.projects': () => showSidebar('projects'),
+    'navigate.projects': () => void navigate({ to: '/projects' }),
     'navigate.inspector': () => {
       focusFirst('aside[aria-label="Properties"] input, aside[aria-label="Properties"] button')
     },
@@ -1487,7 +1390,7 @@ export function Workspace({ projectId }: { projectId: string }) {
       createLayer(engine.current)
       documentChanged()
     },
-    'navigate.layers': () => showSidebar('layers'),
+    'navigate.layers': showLayers,
     'view.zoomIn': () => stepZoom(1),
     'view.zoomOut': () => stepZoom(-1),
     'view.zoomFit': () => zoomToFit(),
@@ -1530,94 +1433,18 @@ export function Workspace({ projectId }: { projectId: string }) {
     })
   }
 
-  const projectList = (
-    <ProjectList
-      projects={projectLibrary(projects, cloud.remoteProjects, cloud.admin)}
-      activeId={project ? projectRouteId(project) : undefined}
-      loggedIn={cloud.admin}
-      loading={cloud.loading}
-      error={cloud.listError}
-      onRefresh={() => void cloud.refresh()}
-      onOpen={(item) => {
-        setSidebarOpen(false)
-        if (item.id !== projectId) void navigate({ to: '/project/$id', params: { id: item.id } })
-        else if (!project) setOpenAttempt((value) => value + 1)
-      }}
-      onDuplicate={duplicateProject}
-      onDownload={(item) => downloadSvg(currentSvg(item, { forExport: true }), item.name)}
-      onDelete={(item) => {
-        setPendingDelete(item)
-        setConfirmingDelete(true)
-      }}
-      onDeleteRemote={setPendingRemoteDelete}
+  const sidebar = project ? (
+    <LayersPanel
+      editor={engine.current}
+      documentRevision={documentRevision}
+      selectionRevision={selectionRevision}
+      onChange={onLayerChange}
+      onSelect={refreshEditorState}
     />
-  )
-
-  const sidebar = (
-    <Tabs
-      value={sidebarTab}
-      onValueChange={(value) => setSidebarTab(value as 'layers' | 'projects')}
-      className="flex min-h-0 flex-1 flex-col gap-0"
-    >
-      <div className="shrink-0 border-b px-2 py-2">
-        <TabsList className="h-8 w-full">
-          <TabsTrigger value="layers" data-sidebar-tab="layers">
-            <LayersIcon />
-            Layers
-          </TabsTrigger>
-          <TabsTrigger value="projects" data-sidebar-tab="projects">
-            <FolderOpenIcon />
-            Projects
-          </TabsTrigger>
-        </TabsList>
-      </div>
-      <TabsContent value="layers" className="flex min-h-0 flex-col">
-        {project ? (
-          <LayersPanel
-            editor={engine.current}
-            documentRevision={documentRevision}
-            selectionRevision={selectionRevision}
-            onChange={onLayerChange}
-            onSelect={refreshEditorState}
-          />
-        ) : (
-          <p className="px-4 py-5 text-xs leading-relaxed text-muted-foreground">
-            Open a project to view its layers.
-          </p>
-        )}
-      </TabsContent>
-      <TabsContent value="projects" className="flex min-h-0 flex-col">
-        {projectList}
-        <div className="flex shrink-0 gap-2 border-t p-3">
-          <Button
-            size="sm"
-            className="flex-1"
-            aria-label="New project"
-            disabled={!ready}
-            onClick={() => {
-              setSidebarOpen(false)
-              newProject('blank')
-            }}
-          >
-            <PlusIcon />
-            New project
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1"
-            disabled={!ready}
-            onClick={() => {
-              setSidebarOpen(false)
-              chooseFiles(true)
-            }}
-          >
-            <FileUpIcon />
-            Import project
-          </Button>
-        </div>
-      </TabsContent>
-    </Tabs>
+  ) : (
+    <p className="px-4 py-5 text-xs leading-relaxed text-muted-foreground">
+      Open a project to view its layers.
+    </p>
   )
 
   const inspector = (
@@ -1678,8 +1505,7 @@ export function Workspace({ projectId }: { projectId: string }) {
         onDuplicate={() => {
           if (project) duplicateProject(project)
         }}
-        onProjects={() => showSidebar('projects')}
-        onLayers={() => showSidebar(sidebarTab)}
+        onLayers={showLayers}
         onSave={saveNow}
         onDownload={() => {
           if (project) downloadSvg(currentSvg(project, { forExport: true }), project.name)
@@ -1871,8 +1697,8 @@ export function Workspace({ projectId }: { projectId: string }) {
           showCloseButton={false}
         >
           <SheetHeader className="sr-only">
-            <SheetTitle>Workspace sidebar</SheetTitle>
-            <SheetDescription>Switch projects or organize your layers.</SheetDescription>
+            <SheetTitle>Layers</SheetTitle>
+            <SheetDescription>Organize the layers of this project.</SheetDescription>
           </SheetHeader>
           <div className="flex shrink-0 items-center gap-3 border-b px-3 py-2">
             <span className="min-w-0 flex-1 truncate text-xs font-medium">
@@ -1903,30 +1729,6 @@ export function Workspace({ projectId }: { projectId: string }) {
           getSvg={() => currentSvg(project, { forExport: true })}
         />
       )}
-
-      <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete “{pendingDelete?.name || 'Untitled'}”?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes the project from this browser. It can’t be undone, so download the SVG
-              first if you want to keep it.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                if (pendingDelete) void removeProject(pendingDelete)
-                setConfirmingDelete(false)
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog
         open={Boolean(pendingRemoteDelete)}

@@ -8,7 +8,6 @@ import {
   HistoryIcon,
   KeyRoundIcon,
   LockIcon,
-  PinIcon,
   RotateCcwIcon,
   Share2Icon,
   Trash2Icon,
@@ -17,10 +16,8 @@ import { toast } from 'sonner'
 import type { Project } from '@/lib/projects'
 import type { useCloudProjects } from '@/lib/use-cloud-projects'
 import { documentKey } from '@/lib/cloud-types'
-import { timeAgo } from '@/lib/format'
-import { useCommandScope } from './commands'
+import { VersionHistoryDialog } from './version-history-dialog'
 import { Button } from './ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,7 +45,6 @@ export function CloudControls({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyBusy, setHistoryBusy] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
-  useCommandScope('dialog', historyOpen)
   useEffect(() => {
     setHistoryOpen(false)
   }, [project?.id])
@@ -271,65 +267,18 @@ export function CloudControls({
           </div>
         ))}
 
-      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Version history</DialogTitle>
-            <DialogDescription>
-              The latest 100 snapshots are retained, along with pinned and published versions.
-              Restoring creates a new snapshot.
-            </DialogDescription>
-          </DialogHeader>
-          {historyError && (
-            <p role="alert" className="text-destructive">
-              {historyError}
-            </p>
-          )}
-          {historyBusy ? (
-            <div className="flex items-center gap-2">
-              <Spinner />
-              Loading versions…
-            </div>
-          ) : (
-            <ul className="max-h-[55dvh] overflow-y-auto divide-y">
-              {cloud.versions.map((version) => (
-                <li key={version.id} className="flex items-center gap-3 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{version.name || 'Untitled'}</p>
-                    <p
-                      className="text-[11px] text-muted-foreground"
-                      title={new Date(version.createdAt).toLocaleString()}
-                    >
-                      {timeAgo(version.createdAt)}
-                      {version.id === remote?.versionId && ' · Latest'}
-                      {version.id === remote?.publishedVersionId && ' · Published'}
-                    </p>
-                  </div>
-                  <Button
-                    variant={version.pinned ? 'secondary' : 'ghost'}
-                    size="icon-sm"
-                    aria-label={version.pinned ? 'Unpin version' : 'Pin version'}
-                    title={version.pinned ? 'Unpin version' : 'Pin version'}
-                    disabled={cloud.working}
-                    onClick={() => void action(() => cloud.pin(version))}
-                  >
-                    <PinIcon />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={cloud.working || version.id === remote?.versionId}
-                    onClick={() => void action(() => cloud.restore(version.id))}
-                  >
-                    <RotateCcwIcon />
-                    Restore
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </DialogContent>
-      </Dialog>
+      <VersionHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        versions={cloud.versions}
+        loading={historyBusy}
+        error={historyError}
+        working={cloud.working}
+        latestVersionId={remote?.versionId}
+        publishedVersionId={remote?.publishedVersionId}
+        onPin={(version) => void action(() => cloud.pin(version))}
+        onRestore={(version) => void action(() => cloud.restore(version.id))}
+      />
     </>
   )
 }

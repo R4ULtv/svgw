@@ -57,7 +57,6 @@ interface WorkspaceHeaderProps {
   onImport: (asProjects: boolean) => void
   onRename: () => void
   onDuplicate: () => void
-  onProjects: () => void
   onLayers: () => void
   onSave: () => void
   onDownload: () => void
@@ -82,7 +81,6 @@ export function WorkspaceHeader({
   onImport,
   onRename,
   onDuplicate,
-  onProjects,
   onLayers,
   onSave,
   onDownload,
@@ -183,14 +181,10 @@ export function WorkspaceHeader({
                 New sample logo
                 <Shortcut command="file.newSample" />
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onProjects}>
-                <FolderOpenIcon />
-                Project sidebar
-                <Shortcut command="navigate.projects" />
-              </DropdownMenuItem>
               <DropdownMenuItem render={<Link to="/projects" />}>
                 <FolderOpenIcon />
                 All projects
+                <Shortcut command="navigate.projects" />
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

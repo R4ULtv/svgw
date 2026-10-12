@@ -12,7 +12,8 @@ import {
   type VersionInfo,
   type Visibility,
 } from './cloud-types'
-import { listProjects, newId, type Project } from './projects'
+import { linkAfter, uploadDraft } from './cloud-sync'
+import { listProjects, type Project } from './projects'
 import { useAdminSession } from './admin-session'
 
 export type OnlineState =
@@ -126,13 +127,7 @@ export function useCloudProjects(options: Options) {
 
   function updateLink(link: CloudLink, result: RemoteMutation): CloudLink {
     upsertRemote(result.project)
-    return {
-      ...link,
-      revision: result.revision,
-      versionId: result.project.latestVersionId,
-      visibility: result.project.visibility,
-      publishedVersionId: result.project.publishedVersionId,
-    }
+    return linkAfter(link, result)
   }
 
   async function saveSnapshot(allowCreate: boolean, draft?: Project) {
@@ -144,60 +139,23 @@ export function useCloudProjects(options: Options) {
         409,
         'Reload the remote draft before saving. Your local edits will be kept as a separate copy.',
       )
-    const document = projectDocument(project)
-    const content = documentKey(document)
-    let existing = project.cloud
-    if (existing?.savedDocument === content && existing.revision) {
+    const content = documentKey(projectDocument(project))
+    if (project.cloud?.savedDocument === content && project.cloud.revision) {
       setOnlineState('saved')
       return
-    }
-    // A previous response may have been lost while the user continued editing.
-    // Resolve that exact upload first, then create a version for the newer content.
-    if (existing?.pendingVersion && existing.pendingVersion.document !== content) {
-      try {
-        const pending = existing.pendingVersion
-        const result = await cloudApi.save(
-          existing.id,
-          key.current,
-          JSON.parse(pending.document),
-          pending.id,
-          existing.revision,
-        )
-        existing = { ...updateLink(existing, result), savedDocument: pending.document }
-        delete existing.pendingVersion
-        await latest.current.link(project.id, existing)
-      } catch (cause) {
-        fail(cause, project.id)
-        throw cause
-      }
-    }
-    const pending =
-      existing?.pendingVersion?.document === content
-        ? existing.pendingVersion
-        : { id: newId(), document: content }
-    const link: CloudLink = {
-      id: existing?.id ?? project.id,
-      mode: 'admin',
-      revision: existing?.revision ?? null,
-      versionId: existing?.versionId ?? pending.id,
-      savedDocument: existing?.savedDocument ?? '',
-      visibility: existing?.visibility ?? 'private',
-      publishedVersionId: existing?.publishedVersionId ?? null,
-      pendingVersion: pending,
     }
     if (latest.current.project?.id === project.id) {
       setOnlineState('saving')
       setOnlineError(null)
     }
-    // Persist the upload identity before sending; retries survive a page reload.
-    await latest.current.link(project.id, link)
     try {
-      const result = await cloudApi.save(link.id, key.current, document, pending.id, link.revision)
+      await uploadDraft(
+        project,
+        key.current,
+        (link) => latest.current.link(project.id, link),
+        (result) => upsertRemote(result.project),
+      )
       setRemoteAvailable(true)
-      const saved = updateLink(link, result)
-      saved.savedDocument = content
-      delete saved.pendingVersion
-      await latest.current.link(project.id, saved)
       if (latest.current.project?.id === project.id) {
         const current = await latest.current.snapshot()
         setOnlineState(current && documentKey(current) !== content ? 'pending' : 'saved')
