@@ -52,6 +52,9 @@ import {
   layerName,
   layerOf,
   promoteLayers,
+  setSelectionBounds,
+  setSelectionRotation,
+  type Bounds,
 } from '@/lib/layers'
 import {
   loadViewPrefs,
@@ -418,7 +421,7 @@ export function Workspace({ projectId }: { projectId: string }) {
       setSelectionRevision((value) => value + 1)
     }
     if (selectionChanged || documentRefresh.current) {
-      const next = readSelection(elements)
+      const next = readSelection(elements, editor.getSvgContent())
       selectionStore.set(next)
       setSelection((current) =>
         current &&
@@ -862,6 +865,16 @@ export function Workspace({ projectId }: { projectId: string }) {
   function centerSelection() {
     commitAttribute()
     if (engine.current) centerSelectionOnArtboard(engine.current)
+  }
+
+  function changeSelectionBounds(next: Bounds) {
+    commitAttribute()
+    return engine.current ? setSelectionBounds(engine.current, next) : false
+  }
+
+  function rotateSelection(angle: number) {
+    commitAttribute()
+    return engine.current ? setSelectionRotation(engine.current, angle) : false
   }
 
   /**
@@ -1576,6 +1589,8 @@ export function Workspace({ projectId }: { projectId: string }) {
       onResize={resizeCanvas}
       onFitToArtwork={fitCanvasToArtwork}
       onCenterSelection={centerSelection}
+      onBoundsChange={changeSelectionBounds}
+      onRotate={rotateSelection}
     />
   )
 

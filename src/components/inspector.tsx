@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   ArrowLeftRightIcon,
   ChevronDownIcon,
@@ -6,11 +6,14 @@ import {
   Link2OffIcon,
   MoonIcon,
   MousePointerClickIcon,
+  RotateCwIcon,
   ScanIcon,
   SunIcon,
   TargetIcon,
 } from 'lucide-react'
 import { PaintField } from '@/components/color-picker'
+import type { Selection } from '@/lib/editor'
+import type { Bounds } from '@/lib/layers'
 import type { SelectionStore } from '@/lib/selection-store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -42,6 +45,10 @@ interface InspectorProps {
   /** Crops the canvas to the visible artwork. */
   onFitToArtwork: () => void
   onCenterSelection: () => void
+  /** Moves and scales the selection as a whole; returns false when nothing changed. */
+  onBoundsChange: (next: Bounds) => boolean
+  /** Rotates a single selected object; returns false when it could not. */
+  onRotate: (angle: number) => boolean
 }
 
 const backdrops: { value: Backdrop; label: string; icon?: typeof SunIcon }[] = [
@@ -61,6 +68,8 @@ export function Inspector({
   onResize,
   onFitToArtwork,
   onCenterSelection,
+  onBoundsChange,
+  onRotate,
 }: InspectorProps) {
   const selection = useSyncExternalStore(
     selectionStore.subscribe,
@@ -77,6 +86,11 @@ export function Inspector({
       <Section title={selection ? selection.label : 'Selection'}>
         {selection ? (
           <>
+            <SelectionTransform
+              selection={selection}
+              onBoundsChange={onBoundsChange}
+              onRotate={onRotate}
+            />
             <PaintField
               attr="fill"
               label="Fill"
@@ -209,85 +223,44 @@ function CanvasSize({
   onResize,
   onFitToArtwork,
 }: Pick<InspectorProps, 'size' | 'onResize' | 'onFitToArtwork'>) {
-  const [draft, setDraft] = useState({ w: String(size.w), h: String(size.h) })
   const [linked, setLinked] = useState(false)
-  useEffect(() => setDraft({ w: String(size.w), h: String(size.h) }), [size.w, size.h])
 
-  function commit(changed: 'w' | 'h') {
-    const value = Math.round(Number(draft[changed]))
-    if (!Number.isFinite(value) || value < 1 || value > MAX_SIZE) {
-      setDraft({ w: String(size.w), h: String(size.h) })
-      return
-    }
+  function commit(changed: 'w' | 'h', input: number) {
+    const value = Math.round(input)
+    if (value < 1 || value > MAX_SIZE) return false
     let width = changed === 'w' ? value : size.w
     let height = changed === 'h' ? value : size.h
     if (linked) {
       if (changed === 'w') height = Math.max(1, Math.round((value * size.h) / size.w))
       else width = Math.max(1, Math.round((value * size.w) / size.h))
     }
-    if (width !== size.w || height !== size.h) onResize(width, height)
-    else setDraft({ w: String(size.w), h: String(size.h) })
+    if (width === size.w && height === size.h) return false
+    onResize(width, height)
+    return true
   }
-
-  const dimension = (axis: 'w' | 'h') => (
-    <div className="relative min-w-0 flex-1">
-      <span className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-[10px] text-muted-foreground uppercase">
-        {axis}
-      </span>
-      <Input
-        aria-label={axis === 'w' ? 'Canvas width' : 'Canvas height'}
-        inputMode="numeric"
-        value={draft[axis]}
-        onChange={(event) =>
-          setDraft({ ...draft, [axis]: event.target.value.replace(/[^\d.]/g, '') })
-        }
-        onBlur={() => commit(axis)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') commit(axis)
-          if (event.key === 'Escape') {
-            setDraft({ w: String(size.w), h: String(size.h) })
-            event.currentTarget.blur()
-          }
-          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-            event.preventDefault()
-            const step = event.shiftKey ? 10 : 1
-            const next = Math.min(
-              MAX_SIZE,
-              Math.max(1, Number(draft[axis]) + (event.key === 'ArrowUp' ? step : -step)),
-            )
-            setDraft({ ...draft, [axis]: String(next) })
-          }
-        }}
-        className="pr-7 pl-6 tabular-nums"
-      />
-      <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-muted-foreground">
-        px
-      </span>
-    </div>
-  )
 
   return (
     <>
       <div className="flex items-center gap-1.5" role="group" aria-label="Canvas size">
-        {dimension('w')}
-        {dimension('h')}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Keep proportions"
-                aria-pressed={linked}
-                onClick={() => setLinked(!linked)}
-                className={cn(linked && 'bg-muted text-foreground')}
-              />
-            }
-          >
-            {linked ? <Link2Icon /> : <Link2OffIcon />}
-          </TooltipTrigger>
-          <TooltipContent>{linked ? 'Proportions locked' : 'Keep proportions'}</TooltipContent>
-        </Tooltip>
+        <NumberField
+          label="Canvas width"
+          prefix="W"
+          unit="px"
+          value={size.w}
+          min={1}
+          max={MAX_SIZE}
+          onCommit={(value) => commit('w', value)}
+        />
+        <NumberField
+          label="Canvas height"
+          prefix="H"
+          unit="px"
+          value={size.h}
+          min={1}
+          max={MAX_SIZE}
+          onCommit={(value) => commit('h', value)}
+        />
+        <ProportionsToggle linked={linked} onLinkedChange={setLinked} />
       </div>
       <div className="flex gap-1.5">
         <DropdownMenu>
@@ -343,6 +316,188 @@ function CanvasSize({
         </Tooltip>
       </div>
     </>
+  )
+}
+
+/**
+ * Position, size, and rotation of the selection. Values are the selection's bounds in document
+ * px, without strokes, so they match the artboard size and the guides.
+ */
+function SelectionTransform({
+  selection,
+  onBoundsChange,
+  onRotate,
+}: {
+  selection: Selection
+  onBoundsChange: InspectorProps['onBoundsChange']
+  onRotate: InspectorProps['onRotate']
+}) {
+  const [linked, setLinked] = useState(false)
+  const { x, y, width, height, rotation } = selection
+  if (x === null || y === null || width === null || height === null) return null
+  const bounds = { x, y, width, height }
+
+  function resize(axis: 'width' | 'height', value: number) {
+    const next = { ...bounds, [axis]: value }
+    if (linked && bounds.width > 0 && bounds.height > 0) {
+      if (axis === 'width') next.height = (value * bounds.height) / bounds.width
+      else next.width = (value * bounds.width) / bounds.height
+    }
+    return onBoundsChange(next)
+  }
+
+  return (
+    <div
+      className="grid grid-cols-[1fr_1fr_auto] items-center gap-1.5"
+      role="group"
+      aria-label="Transform"
+    >
+      <NumberField
+        label="X position"
+        prefix="X"
+        value={x}
+        onCommit={(value) => onBoundsChange({ ...bounds, x: value })}
+      />
+      <NumberField
+        label="Y position"
+        prefix="Y"
+        value={y}
+        onCommit={(value) => onBoundsChange({ ...bounds, y: value })}
+      />
+      <span aria-hidden="true" className="w-7" />
+      <NumberField
+        label="Width"
+        prefix="W"
+        value={width}
+        min={0}
+        disabled={width === 0}
+        onCommit={(value) => value > 0 && resize('width', value)}
+      />
+      <NumberField
+        label="Height"
+        prefix="H"
+        value={height}
+        min={0}
+        disabled={height === 0}
+        onCommit={(value) => value > 0 && resize('height', value)}
+      />
+      <ProportionsToggle linked={linked} onLinkedChange={setLinked} />
+      {rotation !== null && (
+        <NumberField
+          label="Rotation"
+          prefix={<RotateCwIcon className="size-3" />}
+          unit="°"
+          value={rotation}
+          // Wraps to the range SVG-Edit's rotation handle uses, -180° to 180°.
+          onCommit={(value) => onRotate(((((value + 180) % 360) + 360) % 360) - 180)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ProportionsToggle({
+  linked,
+  onLinkedChange,
+}: {
+  linked: boolean
+  onLinkedChange: (linked: boolean) => void
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Keep proportions"
+            aria-pressed={linked}
+            onClick={() => onLinkedChange(!linked)}
+            className={cn(linked && 'bg-muted text-foreground')}
+          />
+        }
+      >
+        {linked ? <Link2Icon /> : <Link2OffIcon />}
+      </TooltipTrigger>
+      <TooltipContent>{linked ? 'Proportions locked' : 'Keep proportions'}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** Rounds for display: two decimals, and never "-0". */
+const formatNumber = (value: number) => String(Math.round(value * 100) / 100 || 0)
+
+/**
+ * A compact number input that applies on Enter or blur. Arrow keys apply a step of 1, or 10 with
+ * Shift; Escape restores the current value. `onCommit` returns false when nothing changed.
+ */
+function NumberField({
+  label,
+  prefix,
+  unit,
+  value,
+  min = -Infinity,
+  max = Infinity,
+  disabled,
+  onCommit,
+}: {
+  label: string
+  prefix: ReactNode
+  unit?: string
+  value: number
+  min?: number
+  max?: number
+  disabled?: boolean
+  onCommit: (value: number) => boolean
+}) {
+  const shown = formatNumber(value)
+  const [draft, setDraft] = useState(shown)
+  // Escape blurs the input before the restored draft renders; the blur must not apply the old one.
+  const cancelling = useRef(false)
+  useEffect(() => setDraft(shown), [shown])
+
+  function apply(next: number) {
+    if (Number.isFinite(next) && next >= min && next <= max && onCommit(next))
+      setDraft(formatNumber(next))
+    else setDraft(shown)
+  }
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      <span className="pointer-events-none absolute top-1/2 left-2 flex -translate-y-1/2 text-[10px] text-muted-foreground uppercase">
+        {prefix}
+      </span>
+      <Input
+        aria-label={label}
+        inputMode="decimal"
+        value={draft}
+        disabled={disabled}
+        onChange={(event) => setDraft(event.target.value.replace(/[^\d.-]/g, ''))}
+        onBlur={() => {
+          if (cancelling.current) cancelling.current = false
+          else if (draft !== shown) apply(draft === '' ? NaN : Number(draft))
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') apply(draft === '' ? NaN : Number(draft))
+          if (event.key === 'Escape') {
+            cancelling.current = true
+            setDraft(shown)
+            event.currentTarget.blur()
+          }
+          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            event.preventDefault()
+            const step = (event.shiftKey ? 10 : 1) * (event.key === 'ArrowUp' ? 1 : -1)
+            apply(Math.min(max, Math.max(min, (Number(draft) || 0) + step)))
+          }
+        }}
+        className={cn('pl-6 tabular-nums', unit ? 'pr-7' : 'pr-2')}
+      />
+      {unit && (
+        <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-muted-foreground">
+          {unit}
+        </span>
+      )}
+    </div>
   )
 }
 

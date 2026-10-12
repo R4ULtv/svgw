@@ -1,5 +1,5 @@
 import type SvgCanvas from '@svgedit/svgcanvas'
-import { exportLayers } from './layers'
+import { artworkBounds, exportLayers, rotatedSize } from './layers'
 import { normalizeColor } from './colors'
 
 // SVG-Edit 7.4.2's bundled types are inaccurate: undo/redo live on undoMgr, not the canvas,
@@ -41,6 +41,10 @@ export type SvgEditor = Omit<
   /** Sizes the editor's root to `width` × `height` and centers the artboard in it at the current zoom. */
   updateCanvas(width: number, height: number): { x: number; y: number }
   gettingSelectorManager(): { requestSelector(element: Element): { resize(): void } }
+  /** Folds an element's transforms into its geometry where possible; the returned undo command is unreliable outside a drag. */
+  recalculateDimensions(element: Element): Command | null
+  /** Rotates the first selected element about its center as one undo step. */
+  setRotationAngle(angle: number, preventUndo?: boolean): void
   /** Document size in px, independent of zoom. */
   contentW: number
   contentH: number
@@ -83,6 +87,16 @@ export interface Selection {
   stroke: string
   strokeWidth: number
   opacity: number
+  /**
+   * Bounds of the whole selection in document px, without strokes; null when it has no extent.
+   * A single rotated object reports its own unrotated width and height instead.
+   */
+  x: number | null
+  y: number | null
+  width: number | null
+  height: number | null
+  /** Degrees; null unless a single object is selected. */
+  rotation: number | null
 }
 
 /**
@@ -146,9 +160,28 @@ const names: Record<string, string> = {
   image: 'Image',
 }
 
-export function readSelection(elements: Element[]): Selection | null {
+/** The angle of an element's rotate() transform, as SVG-Edit applies it. */
+function rotationOf(element: Element) {
+  if (!(element instanceof SVGGraphicsElement)) return 0
+  const list = element.transform.baseVal
+  for (let index = 0; index < list.numberOfItems; index++) {
+    const item = list.getItem(index)
+    if (item.type === SVGTransform.SVG_TRANSFORM_ROTATE) return item.angle
+  }
+  return 0
+}
+
+export function readSelection(elements: Element[], content: SVGSVGElement): Selection | null {
   if (!elements.length) return null
   const first = elements[0]
+  const bounds = artworkBounds(
+    content,
+    elements.filter(
+      (element) => !elements.some((other) => other !== element && other.contains(element)),
+    ),
+    { stroke: false },
+  )
+  const rotated = elements.length === 1 ? rotatedSize(first) : null
   const targets = paintTargets(elements, 'stroke')
   // Read each style once, before any DOM writes, and stop comparing paint once it is mixed.
   let fill: string | undefined
@@ -183,5 +216,10 @@ export function readSelection(elements: Element[]): Selection | null {
     stroke: stroke ?? 'none',
     strokeWidth,
     opacity: Math.round(Number(first.getAttribute('opacity') ?? 1) * 100),
+    x: bounds?.x ?? null,
+    y: bounds?.y ?? null,
+    width: bounds ? (rotated?.width ?? bounds.width) : null,
+    height: bounds ? (rotated?.height ?? bounds.height) : null,
+    rotation: elements.length === 1 ? rotationOf(first) : null,
   }
 }

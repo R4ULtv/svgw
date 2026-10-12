@@ -416,11 +416,22 @@ export function selectInLayers(editor: SvgEditor, elements: Element[], additive:
   else editor.selectOnly(elements, true)
 }
 
+export interface Bounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 /**
- * Bounds of `elements` in the document's coordinates, including half the stroke width.
- * (SVG-Edit's getStrokedBBox drops artwork that extends past the canvas.)
+ * Bounds of `elements` in the document's coordinates, including half the stroke width unless
+ * `stroke` is false. (SVG-Edit's getStrokedBBox drops artwork that extends past the canvas.)
  */
-export function artworkBounds(content: SVGSVGElement, elements: Element[]) {
+export function artworkBounds(
+  content: SVGSVGElement,
+  elements: Element[],
+  { stroke = true } = {},
+): Bounds | null {
   const toDocument = content.getScreenCTM()?.inverse()
   if (!toDocument) return null
   let minX = Infinity,
@@ -432,9 +443,9 @@ export function artworkBounds(content: SVGSVGElement, elements: Element[]) {
     const box = element.getBBox()
     const matrix = element.getScreenCTM()
     if (!matrix || (!box.width && !box.height)) continue
-    const style = getComputedStyle(element)
+    const style = stroke ? getComputedStyle(element) : null
     const pad =
-      style.stroke && style.stroke !== 'none' ? (parseFloat(style.strokeWidth) || 0) / 2 : 0
+      style?.stroke && style.stroke !== 'none' ? (parseFloat(style.strokeWidth) || 0) / 2 : 0
     const corners = [
       [box.x - pad, box.y - pad],
       [box.x + box.width + pad, box.y - pad],
@@ -454,14 +465,20 @@ export function artworkBounds(content: SVGSVGElement, elements: Element[]) {
     : null
 }
 
-/** Centers the selection as a whole on the artboard, preserving spacing and transforms. */
-export function centerSelectionOnArtboard(editor: SvgEditor) {
+/** The selected objects that move on their own, or null when any of them is locked or hidden. */
+function selectionRoots(editor: SvgEditor) {
   const selected = editor.getSelectedElements().filter((element): element is Element => !!element)
-  if (!selected.length || selected.some(isBlocked)) return false
+  if (!selected.length || selected.some(isBlocked)) return null
   // A selected ancestor already moves its descendants.
-  const elements = selected.filter(
+  return selected.filter(
     (element) => !selected.some((other) => other !== element && other.contains(element)),
   )
+}
+
+/** Centers the selection as a whole on the artboard, preserving spacing and transforms. */
+export function centerSelectionOnArtboard(editor: SvgEditor) {
+  const elements = selectionRoots(editor)
+  if (!elements) return false
   const content = editor.getSvgContent()
   const matrix = content.getScreenCTM()
   const box = artworkBounds(content, elements)
@@ -492,6 +509,174 @@ export function centerSelectionOnArtboard(editor: SvgEditor) {
     editor.gettingSelectorManager().requestSelector(element).resize()
   }
   editor.undoMgr.addCommandToHistory(batch)
+  return true
+}
+
+/** Screen matrices are single precision; this drops their noise from the values written. */
+const round = (value: number) => Math.round(value * 1e5) / 1e5 || 0
+/** Scale factors need more precision: they multiply coordinates up to 20000. */
+const roundScale = (value: number) => Math.round(value * 1e7) / 1e7 || 0
+/** A transform matrix as SVG, with rounded values. */
+const matrixValue = ({ a, b, c, d, e, f }: DOMMatrixReadOnly) =>
+  roundScale(a) === 1 && roundScale(b) === 0 && roundScale(c) === 0 && roundScale(d) === 1
+    ? `translate(${round(e)} ${round(f)})`
+    : `matrix(${[a, b, c, d].map(roundScale).join(' ')} ${round(e)} ${round(f)})`
+const GEOMETRY = [
+  'x',
+  'y',
+  'width',
+  'height',
+  'cx',
+  'cy',
+  'r',
+  'rx',
+  'ry',
+  'x1',
+  'y1',
+  'x2',
+  'y2',
+  'font-size',
+]
+
+/**
+ * The unrotated size of an object whose only transform is a rotation, as SVG-Edit leaves objects
+ * turned with its handle. Its W and H show this size, which the handles also resize.
+ */
+export function rotatedSize(element: Element) {
+  if (!(element instanceof SVGGraphicsElement)) return null
+  const list = element.transform.baseVal
+  if (list.numberOfItems !== 1) return null
+  const item = list.getItem(0)
+  if (item.type !== SVGTransform.SVG_TRANSFORM_ROTATE || !item.angle) return null
+  const { width, height } = element.getBBox()
+  return { width, height }
+}
+
+/**
+ * Moves and scales the selection as a whole so its bounds (without strokes) become `next`, as one
+ * undo step. A single rotated object is resized along its own axes instead (see `rotatedSize`),
+ * keeping its bounds' corner in place. Shapes absorb the change into their geometry where SVG-Edit
+ * can, as after dragging a handle; groups keep it as a transform. An axis with no extent, such as
+ * a horizontal line's height, can only move.
+ */
+export function setSelectionBounds(editor: SvgEditor, next: Bounds) {
+  const elements = selectionRoots(editor)
+  if (!elements || ![next.x, next.y, next.width, next.height].every(Number.isFinite)) return false
+  const content = editor.getSvgContent()
+  const ctm = content.getScreenCTM()
+  const box = artworkBounds(content, elements, { stroke: false })
+  if (!ctm || !box) return false
+  const screen = DOMMatrix.fromMatrix(ctm)
+  const rotated = elements.length === 1 ? rotatedSize(elements[0]) : null
+  const size = rotated ?? box
+  const sx = size.width > 0 ? roundScale(next.width / size.width) : 1
+  const sy = size.height > 0 ? roundScale(next.height / size.height) : 1
+  if (!(sx > 0 && sy > 0)) return false
+  const moved = round(next.x - box.x) !== 0 || round(next.y - box.y) !== 0
+  if (sx === 1 && sy === 1 && !moved) return false
+
+  // Maps document coordinates to an element's parent's coordinates.
+  const toParent = (element: Element) => {
+    const parent = (element.parentNode as SVGGraphicsElement | null)?.getScreenCTM?.()
+    return parent ? DOMMatrix.fromMatrix(parent).inverse().multiply(screen) : null
+  }
+  const finite = (matrix: DOMMatrix | null) =>
+    !!matrix && [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].every(Number.isFinite)
+  if (!elements.every((element) => finite(toParent(element)))) return false
+
+  const { BatchCommand, ChangeElementCommand } = editor.history
+  const batch = new BatchCommand('Change Position and Size')
+  for (const element of elements) {
+    // SVG-Edit may rewrite descendants too, such as a text's tspans.
+    const before = [element, ...element.querySelectorAll('*')].map((node) => ({
+      node,
+      values: new Map([...node.attributes].map(({ name, value }) => [name, value])),
+    }))
+    const transform = element.getAttribute('transform')
+    // Prepending applies `added` in the parent's coordinates, appending in the element's own.
+    const apply = (added: string, at: 'start' | 'end') => {
+      const current = element.getAttribute('transform')
+      element.setAttribute(
+        'transform',
+        !current ? added : at === 'start' ? `${added} ${current}` : `${current} ${added}`,
+      )
+      editor.recalculateDimensions(element)
+      // Groups keep their transforms; fold them into one rather than adding a few per edit.
+      const list = (element as SVGGraphicsElement).transform?.baseVal
+      if (list?.numberOfItems > 1) {
+        const items = Array.from({ length: list.numberOfItems }, (_, index) => list.getItem(index))
+        if (items.every((item) => item.type !== SVGTransform.SVG_TRANSFORM_ROTATE)) {
+          element.setAttribute('transform', matrixValue(list.consolidate()!.matrix))
+        }
+      }
+      // SVG-Edit computes in single precision too: 80 × 0.50625 comes out as 40.49999713897705.
+      for (const name of GEOMETRY) {
+        const value = element.getAttribute(name)
+        if (value !== null && value.trim() !== '' && Number.isFinite(Number(value)))
+          element.setAttribute(name, String(round(Number(value))))
+      }
+    }
+    const translate = (dx: number, dy: number) => {
+      const { a, b, c, d } = toParent(element)!
+      const x = round(a * dx + c * dy)
+      const y = round(b * dx + d * dy)
+      if (x || y) apply(`translate(${x} ${y})`, 'start')
+    }
+    const scaleAbout = (x: number, y: number, at: 'start' | 'end') => {
+      if (sx !== 1 || sy !== 1)
+        apply(`translate(${x} ${y}) scale(${sx} ${sy}) translate(${-x} ${-y})`, at)
+    }
+
+    if (rotated) {
+      // Resize along the object's own axes, as its handles do.
+      const local = (element as SVGGraphicsElement).getBBox()
+      scaleAbout(round(local.x), round(local.y), 'end')
+    } else {
+      const matrix = toParent(element)!
+      if (Math.abs(matrix.b) < 1e-9 && Math.abs(matrix.c) < 1e-9) {
+        // Move, then scale about the new corner: the forms SVG-Edit's own drag and resize
+        // produce, which it folds into a shape's x, y, width, and height.
+        translate(next.x - box.x, next.y - box.y)
+        const corner = new DOMPoint(next.x, next.y).matrixTransform(matrix)
+        scaleAbout(round(corner.x), round(corner.y), 'start')
+      } else {
+        // A rotated or skewed parent: apply the document-space change as one matrix.
+        const change = new DOMMatrix()
+          .translate(next.x, next.y)
+          .scale(sx, sy)
+          .translate(-box.x, -box.y)
+        apply(matrixValue(matrix.multiply(change).multiply(matrix.inverse())), 'start')
+      }
+    }
+    if (elements.length === 1) {
+      // Rotated objects and text change their corner as they resize (text scales about its
+      // baseline). Put it back where it was asked to be.
+      // Smaller differences are single-precision noise in the measured bounds.
+      const after = artworkBounds(content, [element], { stroke: false })
+      if (after && Math.max(Math.abs(next.x - after.x), Math.abs(next.y - after.y)) > 1e-3)
+        translate(next.x - after.x, next.y - after.y)
+    }
+
+    for (const { node, values } of before) {
+      const old: Record<string, string | null> = {}
+      for (const name of new Set([...values.keys(), ...node.getAttributeNames()]))
+        if ((values.get(name) ?? null) !== node.getAttribute(name))
+          old[name] = values.get(name) ?? null
+      // Undo otherwise moves a rotation's center to match the restored geometry.
+      if (node === element) old.transform = transform
+      if (Object.keys(old).length) batch.addSubCommand(new ChangeElementCommand(node, old))
+    }
+    editor.gettingSelectorManager().requestSelector(element).resize()
+  }
+  editor.undoMgr.addCommandToHistory(batch)
+  return true
+}
+
+/** Rotates a single selected object about its center, to `angle` degrees. */
+export function setSelectionRotation(editor: SvgEditor, angle: number) {
+  const elements = selectionRoots(editor)
+  if (elements?.length !== 1 || !Number.isFinite(angle)) return false
+  editor.setRotationAngle(angle)
   return true
 }
 
