@@ -107,7 +107,9 @@ export function hasArtwork(root: Element): boolean {
 
 function objectName(element: Element) {
   const named =
-    element.getAttribute('data-name') ?? (/^svg_\d+$/.test(element.id) ? '' : element.id)
+    element.getAttribute('data-name') ??
+    [...element.children].find((child) => child.localName === 'title')?.textContent ??
+    (/^svg_\d+$/.test(element.id) ? '' : element.id)
   if (named) return named
   if (element.localName === 'text' && element.textContent?.trim())
     return element.textContent.trim().slice(0, 40)

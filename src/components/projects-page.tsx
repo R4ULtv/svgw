@@ -22,7 +22,9 @@ import type { RemoteProject } from '@/lib/cloud-types'
 import { timeAgo } from '@/lib/format'
 import { projectLibrary, type ProjectEntry } from '@/lib/project-library'
 import { createProject, listProjects, saveProject, type Project } from '@/lib/projects'
-import { blankSvg, isSvgFile, sampleSvg, sanitizeSvg } from '@/lib/svg'
+import { blankSvg, sampleSvg } from '@/lib/svg'
+import { PROJECT_ACCEPT, type ImportedDocument } from '@/lib/project-import'
+import { ProjectImportDialog, type ImportRequest } from './project-import-dialog'
 import { useCommands } from './commands'
 import { LoginButton } from './login-button'
 import { Logo } from './logo'
@@ -46,6 +48,7 @@ export function ProjectsPage() {
   const [creating, setCreating] = useState(false)
   const creatingRef = useRef(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const [importRequest, setImportRequest] = useState<ImportRequest | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -109,37 +112,38 @@ export function ProjectsPage() {
   async function create({
     svg = blankSvg,
     name = 'Untitled',
-    file,
+    documents,
   }: {
     svg?: string
     name?: string
-    file?: File
+    documents?: ImportedDocument[]
   } = {}) {
     if (creatingRef.current || !session.authReady) return
     creatingRef.current = true
     setCreating(true)
     try {
-      if (file) {
-        if (!isSvgFile(file)) throw new Error('Choose an SVG file to open.')
-        if (file.size > 8 * 1024 * 1024) throw new Error('Choose an SVG smaller than 8 MiB.')
-        svg = sanitizeSvg(await file.text())
-        name = file.name.replace(/\.svg$/i, '') || 'Imported SVG'
+      let last: Project | undefined
+      for (const document of documents ?? [{ name, svg, guides: undefined }]) {
+        const project = createProject(document.name, document.svg)
+        if (document.guides) project.guides = document.guides
+        if (session.admin)
+          project.cloud = {
+            id: project.id,
+            mode: 'admin',
+            revision: null,
+            versionId: '',
+            savedDocument: '',
+            visibility: 'private',
+            publishedVersionId: null,
+          }
+        await saveProject(project)
+        setLocals((locals) => [project, ...locals])
+        last = project
       }
-      const project = createProject(name, svg)
-      if (session.admin)
-        project.cloud = {
-          id: project.id,
-          mode: 'admin',
-          revision: null,
-          versionId: '',
-          savedDocument: '',
-          visibility: 'private',
-          publishedVersionId: null,
-        }
-      await saveProject(project)
-      await navigate({ to: '/project/$id', params: { id: project.id } })
+      if (last) await navigate({ to: '/project/$id', params: { id: last.id } })
     } catch (cause) {
-      toast.error(file ? 'Could not open SVG' : 'Could not create project', {
+      if (documents) throw cause
+      toast.error('Could not create project', {
         description: cause instanceof Error ? cause.message : 'Try again.',
       })
     } finally {
@@ -213,7 +217,7 @@ export function ProjectsPage() {
               disabled={busy}
               onClick={() => fileInput.current?.click()}
             >
-              <UploadIcon /> Open SVG
+              <UploadIcon /> Import project
             </Button>
             <Button className="h-10 px-4" disabled={busy} onClick={() => void create()}>
               {creating ? <Spinner /> : <PlusIcon />} New project
@@ -295,14 +299,20 @@ export function ProjectsPage() {
       <input
         ref={fileInput}
         type="file"
-        accept=".svg,image/svg+xml"
+        accept={PROJECT_ACCEPT}
+        multiple
         className="hidden"
-        aria-label="Open an SVG file"
+        aria-label="Import an SVG or project file"
         onChange={(event) => {
-          const file = event.target.files?.[0]
+          const files = [...(event.target.files ?? [])]
           event.target.value = ''
-          if (file) void create({ file })
+          if (files.length) setImportRequest({ files, asProjects: true })
         }}
+      />
+      <ProjectImportDialog
+        request={importRequest}
+        onClose={() => setImportRequest(null)}
+        onImport={(documents) => create({ documents })}
       />
     </div>
   )
@@ -374,7 +384,7 @@ function ProjectSection({
                   ? 'No projects match your search.'
                   : remote
                     ? 'No remote projects yet. Create a project while logged in, or save one online from the editor.'
-                    : 'No local projects yet. Start a new project or open an SVG.'}
+                    : 'No local projects yet. Start a new project or import an SVG or project.'}
             </p>
           </div>
         )

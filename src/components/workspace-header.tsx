@@ -62,6 +62,7 @@ interface WorkspaceHeaderProps {
   onLayers: () => void
   onSave: () => void
   onDownload: () => void
+  onDownloadProject: () => void
   onOptimize: () => void
   onShortcuts: () => void
   onDeleteRemote: () => void
@@ -86,6 +87,7 @@ export function WorkspaceHeader({
   onLayers,
   onSave,
   onDownload,
+  onDownloadProject,
   onOptimize,
   onShortcuts,
   onDeleteRemote,
@@ -175,7 +177,7 @@ export function WorkspaceHeader({
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onImport(true)}>
                 <FileUpIcon />
-                Open SVG as a project…
+                Open project or SVG…
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onNew('sample')}>
                 <SparklesIcon />
@@ -197,7 +199,7 @@ export function WorkspaceHeader({
               <DropdownMenuLabel>Current project</DropdownMenuLabel>
               <DropdownMenuItem disabled={!project} onClick={() => onImport(false)}>
                 <UploadIcon />
-                Import SVG as a layer…
+                Import artwork as a layer…
                 <Shortcut command="file.import" />
               </DropdownMenuItem>
               <DropdownMenuItem disabled={!project} onClick={onRename}>
@@ -310,19 +312,16 @@ export function WorkspaceHeader({
             render={
               <Button
                 variant="outline"
-                disabled={!project || !ready}
-                onClick={() => onImport(false)}
+                disabled={!ready}
+                onClick={() => onImport(true)}
                 className="hidden md:inline-flex"
               />
             }
           >
             <UploadIcon data-icon="inline-start" />
-            Import SVG
+            Import project
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Add an SVG as a layer
-            <CommandShortcut command="file.import" />
-          </TooltipContent>
+          <TooltipContent side="bottom">Open an SVG or .json project</TooltipContent>
         </Tooltip>
         <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
         <LoginButton />
@@ -341,6 +340,11 @@ export function WorkspaceHeader({
             <ChevronDownIcon className="hidden size-3 opacity-60 sm:block" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuItem onClick={onDownloadProject}>
+              <DownloadIcon />
+              Download project (.json)
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDownload}>
               <DownloadIcon />
               Download SVG

@@ -73,7 +73,7 @@ export const commands = {
     binding: sequence('N', 'S'),
   },
   'file.import': {
-    title: 'Import SVG as a new layer…',
+    title: 'Import artwork as a new layer…',
     group: 'File',
     scope: 'global',
     binding: keys('Mod+O'),

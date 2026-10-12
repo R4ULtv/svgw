@@ -43,6 +43,7 @@ import { useCloudProjects } from '@/lib/use-cloud-projects'
 import { CloudError } from '@/lib/cloud-api'
 import { blankSvg, downloadSvg, isSvgFile, sampleSvg, sanitizeSvg } from '@/lib/svg'
 import {
+  centerSelectionOnArtboard,
   createLayer,
   exportLayers,
   fitCanvasToArtwork as fitArtwork,
@@ -64,6 +65,8 @@ import {
   type ViewPrefs,
 } from '@/lib/guides'
 import { extractSvg, inlineStyles, insertSvg, PLACE_LABEL } from '@/lib/svg-import'
+import { PROJECT_ACCEPT, type ImportedDocument } from '@/lib/project-import'
+import { downloadProjectFile } from '@/lib/project-download'
 import { bindingText } from '@/lib/commands'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -122,6 +125,7 @@ import { ProjectList } from './project-list'
 import { ShortcutsDialog } from './shortcuts-dialog'
 import { ProjectRenameDialog } from './project-rename-dialog'
 import { WorkspaceHeader } from './workspace-header'
+import { ProjectImportDialog, type ImportRequest } from './project-import-dialog'
 
 type SaveState = 'saved' | 'saving' | 'error'
 
@@ -151,6 +155,7 @@ export function Workspace({ projectId }: { projectId: string }) {
   const host = useRef<HTMLDivElement>(null)
   const toolbar = useRef<HTMLDivElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const [importRequest, setImportRequest] = useState<ImportRequest | null>(null)
   const engine = useRef<SvgEditor | null>(null)
   const active = useRef<Project | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
@@ -596,8 +601,9 @@ export function Workspace({ projectId }: { projectId: string }) {
     }
   }
 
-  function addProject(name: string, svg: string) {
+  function addProject(name: string, svg: string, importedGuides?: Guides) {
     const next = createProject(name, sanitizeSvg(svg))
+    if (importedGuides) next.guides = importedGuides
     // New projects created during an admin session automatically begin private online drafts.
     if (cloud.isAdmin())
       next.cloud = {
@@ -616,25 +622,16 @@ export function Workspace({ projectId }: { projectId: string }) {
   }
 
   /** Imports files as new layers of the open document, or as new projects when asked (or none is open). */
-  async function importFiles(files: File[], { asProjects = false } = {}) {
-    const svgs = files.filter(isSvgFile)
-    if (!svgs.length) {
-      toast.error('Only SVG files can be imported', {
-        description: 'Export your artwork as SVG from Illustrator or Affinity first.',
-      })
-      return
-    }
-    for (const file of svgs) {
-      const name = file.name.replace(/\.svg$/i, '')
-      try {
-        const markup = await file.text()
-        if (asProjects) addProject(name, inlineStyles(markup))
-        else placeSvg(markup, name)
-      } catch (cause) {
-        toast.error(`Could not import ${file.name}`, {
-          description: message(cause, 'The file could not be read.'),
-        })
-      }
+  function importFiles(files: File[], { asProjects = false } = {}) {
+    if (files.length) setImportRequest({ files, asProjects: asProjects || !active.current })
+  }
+
+  async function importDocuments(documents: ImportedDocument[], asProjects: boolean) {
+    for (const document of documents) {
+      if (asProjects) {
+        addProject(document.name, document.svg, document.guides)
+        await flushSave()
+      } else placeSvg(document.svg, document.name)
     }
   }
 
@@ -860,6 +857,11 @@ export function Workspace({ projectId }: { projectId: string }) {
     commitAttribute()
     if (engine.current && !fitArtwork(engine.current))
       toast('Nothing to fit', { description: 'Add or show some artwork first.' })
+  }
+
+  function centerSelection() {
+    commitAttribute()
+    if (engine.current) centerSelectionOnArtboard(engine.current)
   }
 
   /**
@@ -1412,6 +1414,7 @@ export function Workspace({ projectId }: { projectId: string }) {
       else engine.current?.clearSelection()
     },
     'selection.delete': () => engine.current?.deleteSelectedElements(),
+    'selection.center': centerSelection,
     'selection.nudgeLeft': () => nudge(-1, 0),
     'selection.nudgeRight': () => nudge(1, 0),
     'selection.nudgeUp': () => nudge(0, -1),
@@ -1464,7 +1467,12 @@ export function Workspace({ projectId }: { projectId: string }) {
     if (!ready) return
     event.preventDefault()
     setDragging(false)
-    void importFiles([...event.dataTransfer.files])
+    const files = [...event.dataTransfer.files]
+    void importFiles(files, {
+      asProjects: files.some(
+        (file) => /\.json$/i.test(file.name) || file.type === 'application/json',
+      ),
+    })
   }
 
   const projectList = (
@@ -1550,7 +1558,7 @@ export function Workspace({ projectId }: { projectId: string }) {
             }}
           >
             <FileUpIcon />
-            Open SVG
+            Import project
           </Button>
         </div>
       </TabsContent>
@@ -1567,6 +1575,7 @@ export function Workspace({ projectId }: { projectId: string }) {
       onCommit={commitAttribute}
       onResize={resizeCanvas}
       onFitToArtwork={fitCanvasToArtwork}
+      onCenterSelection={centerSelection}
     />
   )
 
@@ -1600,6 +1609,9 @@ export function Workspace({ projectId }: { projectId: string }) {
         onDownload={() => {
           if (project) downloadSvg(currentSvg(project, { forExport: true }), project.name)
         }}
+        onDownloadProject={() => {
+          if (project) downloadProjectFile({ name: project.name, svg: currentSvg(project), guides })
+        }}
         onOptimize={() => {
           commitAttribute()
           setExporting(true)
@@ -1612,9 +1624,9 @@ export function Workspace({ projectId }: { projectId: string }) {
       />
       <input
         ref={fileInput}
-        aria-label="Import SVG file"
+        aria-label="Import an SVG or project file"
         type="file"
-        accept=".svg,image/svg+xml"
+        accept={PROJECT_ACCEPT}
         multiple
         hidden
         onChange={(event) => {
@@ -1622,6 +1634,11 @@ export function Workspace({ projectId }: { projectId: string }) {
           event.target.value = ''
           void importFiles(files, { asProjects: importAsProjects.current })
         }}
+      />
+      <ProjectImportDialog
+        request={importRequest}
+        onClose={() => setImportRequest(null)}
+        onImport={importDocuments}
       />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[15rem_minmax(0,1fr)] lg:grid-cols-[15rem_minmax(0,1fr)_16rem]">
@@ -1863,7 +1880,7 @@ export function Workspace({ projectId }: { projectId: string }) {
         <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center bg-background/70 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 border border-dashed border-foreground/30 bg-popover px-12 py-10 text-center">
             <UploadIcon className="size-6 text-muted-foreground" />
-            <div className="text-sm font-medium">Drop SVG files to import</div>
+            <div className="text-sm font-medium">Drop SVG or .json project files</div>
             <div className="text-xs text-muted-foreground">
               {project
                 ? 'Each file is added as a new layer, centered'
