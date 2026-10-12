@@ -119,7 +119,7 @@ export function DocumentColors({ colors, selection, onApply, onReplace }: Docume
       )}
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         {selection
-          ? 'Click to fill, Shift-click to stroke. Right-click to replace everywhere.'
+          ? 'Click to fill · Shift-click to stroke · Right-click to replace'
           : 'Click a color to replace it everywhere.'}
       </p>
       <Popover

@@ -120,9 +120,9 @@ export function Inspector({
 
   return (
     <div className="flex flex-col">
-      <Section title={selection ? selection.label : 'Document'}>
-        {selection ? (
-          <>
+      {selection ? (
+        <>
+          <Section title={selection.label}>
             <SelectionTransform
               selection={selection}
               onBoundsChange={onBoundsChange}
@@ -135,9 +135,15 @@ export function Inspector({
               onDistribute={onDistribute}
               onCenterSelection={onCenterSelection}
             />
-            {selection.fontFamily !== null && (
+          </Section>
+
+          {selection.fontFamily !== null && (
+            <Section title="Typography">
               <TextFields selection={selection} onStyleChange={onStyleChange} />
-            )}
+            </Section>
+          )}
+
+          <Section title="Appearance">
             <PaintField
               attr="fill"
               label="Fill"
@@ -145,36 +151,6 @@ export function Inspector({
               onPreview={onPreview}
               onCommit={onCommit}
             />
-            <PaintField
-              attr="stroke"
-              label="Stroke"
-              value={selection.stroke}
-              onPreview={onPreview}
-              onCommit={onCommit}
-            />
-            {selection.stroke !== 'none' && (
-              <Field label="Stroke width" htmlFor="stroke-width">
-                <Input
-                  id="stroke-width"
-                  type="number"
-                  min={0}
-                  step={0.5}
-                  value={selection.strokeWidth}
-                  onChange={(event) => {
-                    if (event.target.value !== '' && Number(event.target.value) >= 0)
-                      onPreview('stroke-width', Number(event.target.value))
-                  }}
-                  onBlur={onCommit}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') onCommit()
-                  }}
-                  className="w-20 tabular-nums"
-                />
-              </Field>
-            )}
-            {selection.stroke !== 'none' && (
-              <StrokeFields selection={selection} onStyleChange={onStyleChange} />
-            )}
             <Field label="Opacity">
               <div className="flex flex-1 items-center gap-3">
                 <Slider
@@ -202,17 +178,36 @@ export function Inspector({
                 Reset opacity
               </Button>
             )}
-          </>
-        ) : (
-          <>
-            <DocumentInfo revision={documentRevision} read={readDocument} onOptimize={onOptimize} />
-            <div className="flex items-start gap-2.5 text-[11px] leading-relaxed text-muted-foreground">
-              <MousePointerClickIcon className="mt-0.5 size-3.5 shrink-0" />
-              <p>Select an object to edit its position, colors, and style.</p>
-            </div>
-          </>
-        )}
-      </Section>
+          </Section>
+
+          <Section title="Stroke">
+            <PaintField
+              attr="stroke"
+              label="Stroke"
+              fieldLabel="Color"
+              value={selection.stroke}
+              onPreview={onPreview}
+              onCommit={onCommit}
+            />
+            {selection.stroke !== 'none' && (
+              <StrokeFields
+                selection={selection}
+                onPreview={onPreview}
+                onCommit={onCommit}
+                onStyleChange={onStyleChange}
+              />
+            )}
+          </Section>
+        </>
+      ) : (
+        <Section title="Document">
+          <DocumentInfo revision={documentRevision} read={readDocument} onOptimize={onOptimize} />
+          <div className="flex items-start gap-2.5 text-[11px] leading-relaxed text-muted-foreground">
+            <MousePointerClickIcon className="mt-0.5 size-3.5 shrink-0" />
+            <p>Select an object to edit its position, colors, and style.</p>
+          </div>
+        </Section>
+      )}
 
       <Section title="Colors">
         <DocumentColors
@@ -562,7 +557,6 @@ function SelectionArrange({
             render={
               <Button
                 variant="outline"
-                size="sm"
                 className="col-span-4 ml-1.5 font-normal"
                 onClick={onCenterSelection}
               />
@@ -601,7 +595,7 @@ function ArrangeButton({
       <TooltipTrigger render={<span className="inline-flex [&:not(:first-child)]:-ml-px" />}>
         <Button
           variant="outline"
-          size="icon-sm"
+          size="icon"
           aria-label={label}
           disabled={disabled}
           onClick={onClick}
@@ -611,7 +605,7 @@ function ArrangeButton({
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {label}
+        {disabled ? `${label} (select 3 or more objects)` : label}
         <CommandShortcut command={command} />
       </TooltipContent>
     </Tooltip>
@@ -632,14 +626,42 @@ const joins = [
 /** Line caps, joins, and dashes of the selection's strokes. */
 function StrokeFields({
   selection,
+  onPreview,
+  onCommit,
   onStyleChange,
 }: {
   selection: Selection
+  onPreview: InspectorProps['onPreview']
+  onCommit: InspectorProps['onCommit']
   onStyleChange: InspectorProps['onStyleChange']
 }) {
   const id = useId()
   return (
     <>
+      <Field label="Width" htmlFor={`${id}-width`}>
+        <div className="relative min-w-0 flex-1">
+          {/* Typing previews live; Enter or leaving the field records one undo step. */}
+          <Input
+            id={`${id}-width`}
+            type="number"
+            min={0}
+            step={0.5}
+            value={selection.strokeWidth}
+            onChange={(event) => {
+              if (event.target.value !== '' && Number(event.target.value) >= 0)
+                onPreview('stroke-width', Number(event.target.value))
+            }}
+            onBlur={onCommit}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') onCommit()
+            }}
+            className="pr-7 tabular-nums"
+          />
+          <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-muted-foreground">
+            px
+          </span>
+        </div>
+      </Field>
       <Field label="Cap">
         <Choice
           label="Line cap"
@@ -772,7 +794,6 @@ function Choice({
         if (values[0] && values[0] !== value) onChange(values[0])
       }}
       variant="outline"
-      size="sm"
       spacing={0}
       className="w-full"
     >
@@ -780,7 +801,8 @@ function Choice({
         <ToggleGroupItem
           key={option.value}
           value={option.value}
-          className="min-w-0 flex-1 px-1 text-[11px]"
+          // The muted background alone barely shows in dark mode; the text color marks the choice.
+          className="min-w-0 flex-1 px-1 text-[11px] font-normal text-muted-foreground aria-pressed:font-medium aria-pressed:text-foreground"
         >
           {option.label}
         </ToggleGroupItem>
@@ -922,6 +944,7 @@ function NumberField({
       </span>
       <Input
         aria-label={label}
+        title={label}
         inputMode="decimal"
         value={draft}
         disabled={disabled}

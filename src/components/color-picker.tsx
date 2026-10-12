@@ -24,12 +24,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 interface PaintFieldProps {
   attr: PaintAttribute
   label: string
+  /** The visible label, when the section already names the paint ("Color" under Stroke). */
+  fieldLabel?: string
   value: string
   onPreview: (attr: string, value: string | number) => void
   onCommit: () => void
 }
 
-export function PaintField({ attr, label, value, onPreview, onCommit }: PaintFieldProps) {
+export function PaintField({
+  attr,
+  label,
+  fieldLabel = label,
+  value,
+  onPreview,
+  onCommit,
+}: PaintFieldProps) {
   const [open, setOpen] = useState(false)
   const [format, setFormat] = useState<ColorFormat>('hex')
   const none = value === 'none'
@@ -50,7 +59,7 @@ export function PaintField({ attr, label, value, onPreview, onCommit }: PaintFie
   return (
     <div data-paint-field={attr} className="flex min-h-8 items-center justify-between gap-3">
       <Label htmlFor={id} className="w-16 shrink-0 text-muted-foreground">
-        {label}
+        {fieldLabel}
       </Label>
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         <Popover
