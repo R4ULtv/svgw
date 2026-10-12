@@ -4,16 +4,16 @@ A browser-based SVG workspace for creating, editing, and exporting vector artwor
 
 ## Features
 
-- Create a blank canvas, start from a sample, or open an SVG. Drop or paste artwork into an existing project as a new layer.
+- Create a blank canvas, start from a sample, or import SVG and portable `.json` projects. Review layers before opening a project or adding SVG artwork as a layer.
 - Draw and edit with SVG-Edit tools, undo/redo, and a scrollable canvas with pan and zoom.
 - Organize artwork with nested layers, visibility, locking, renaming, and drag-and-drop reordering.
 - Edit fill, stroke, and opacity with HEX, RGB, HSL, and OKLCH color inputs.
 - Resize the artboard, fit it to artwork, and use rulers, guides, and snapping.
-- Autosave local drafts and download standard or SVGO-optimized SVGs. Optimization leaves the editable project intact.
+- Autosave local drafts, download `.json` projects with guides and layer locks, or export standard and SVGO-optimized SVGs.
 - Switch between light and dark themes and customize keyboard shortcuts.
 - On your own instance, save private online drafts, restore or pin versions, and publish selected snapshots.
 
-SVG is the import/export format. Export Illustrator or Affinity artwork as SVG before importing; native `.ai` and `.afdesign` files are not supported. Local drafts belong to the current browser and site; download an SVG to keep a portable copy.
+Affinity conversion is a local development tool, kept out of the deployed website. Run `pnpm convert:affinity path/to/design.af --out-dir work/converted`, then import the generated `.json` file on the website. It also writes a standard SVG and conversion notes. For Illustrator, export SVG from the desktop app. See [local conversion and project transfer](docs/design-import.md). Local drafts belong to the current browser and site; download a project file to keep an editable backup.
 
 ## Local development
 
@@ -37,7 +37,7 @@ pnpm dev
 
 `pnpm key` writes the key to `.svgw-admin-key` and configures `.dev.vars`. Both files are ignored by Git, and the command never prints the key. It keeps an existing key unless you pass `--rotate`.
 
-Open **Projects** from the homepage to browse local projects at `/projects`. Log in there to also see remote projects. You can create a project, import an SVG, or search either library from this page.
+Open **Projects** from the homepage to browse local projects at `/projects`. Log in there to also see remote projects. You can create a project, import a design, or search either library from this page.
 
 Click **Login** in the projects page or editor header, or press **Cmd/Ctrl+Shift+K**, and enter the key. On macOS, copy it with `pbcopy < .svgw-admin-key`. The browser keeps it in `sessionStorage` for the tab; **Logout** removes it.
 
