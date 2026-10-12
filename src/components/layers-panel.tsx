@@ -32,7 +32,13 @@ import {
 } from 'lucide-react'
 import type { SvgEditor } from '@/lib/editor'
 import { createFrameTask } from '@/lib/frame-task'
-import { layerRows, layerRowWindow, LAYER_ROW_HEIGHT, type LayerRow } from '@/lib/layer-rows'
+import {
+  isLayerExpanded,
+  layerRows,
+  layerRowWindow,
+  LAYER_ROW_HEIGHT,
+  type LayerRow,
+} from '@/lib/layer-rows'
 import {
   buildLayerTree,
   centerSelectionOnArtboard,
@@ -107,8 +113,9 @@ export const LayersPanel = memo(function LayersPanel({
     [editor, selectionRevision],
   )
   const currentLayer = editor?.getCurrentDrawing().getCurrentLayer() ?? null
-  // Layers start expanded and groups collapsed, as in Illustrator.
-  const [toggled, setToggled] = useState<Set<string>>(() => new Set())
+  // Hidden or empty layers stay collapsed. Explicit choices survive visibility changes and edits.
+  const [expansion, setExpansion] = useState<Map<string, boolean>>(() => new Map())
+  const previousSelection = useRef<Set<Element>>(new Set())
   const [editing, setEditing] = useState<string | null>(null)
   const [dragging, setDragging] = useState<Element[]>([])
   const [drop, setDrop] = useState<{ key: string; position: DropPosition } | null>(null)
@@ -117,7 +124,7 @@ export const LayersPanel = memo(function LayersPanel({
   const dragSource = useRef<string | null>(null)
   const [focused, setFocused] = useState<string | null>(null)
   const [visibleWindow, setWindow] = useState({ top: 0, height: 640 })
-  const rows = useMemo(() => layerRows(tree, toggled), [tree, toggled])
+  const rows = useMemo(() => layerRows(tree, expansion), [tree, expansion])
   const range = layerRowWindow(rows.length, visibleWindow.top, visibleWindow.height)
   const selectedParents = useMemo(() => {
     const parents = new Set<Element>()
@@ -200,20 +207,25 @@ export const LayersPanel = memo(function LayersPanel({
     }
   }, [rows, range.start, range.end])
 
-  const isExpanded = (node: LayerNode) => (node.kind === 'layer') !== toggled.has(node.key)
+  const isExpanded = (node: LayerNode) => isLayerExpanded(node, expansion)
   const toggle = (node: LayerNode) =>
-    setToggled((set) => {
-      const next = new Set(set)
-      if (next.has(node.key)) next.delete(node.key)
-      else next.add(node.key)
+    setExpansion((before) => {
+      const next = new Map(before)
+      next.set(node.key, !isLayerExpanded(node, before))
       return next
     })
 
   // Reveal canvas selections: expand their ancestors and scroll the first one into view.
   useEffect(() => {
-    if (!selected.size) return
-    setToggled((set) => {
-      const next = new Set(set)
+    const previous = previousSelection.current
+    previousSelection.current = selected
+    if (
+      !selected.size ||
+      (previous.size === selected.size && [...selected].every((element) => previous.has(element)))
+    )
+      return
+    setExpansion((before) => {
+      const next = new Map(before)
       for (const element of selected) {
         for (
           let node = element.parentElement;
@@ -221,11 +233,13 @@ export const LayersPanel = memo(function LayersPanel({
           node = node.parentElement
         ) {
           const key = keyOf(node)
-          if (isLayer(node)) next.delete(key)
-          else next.add(key)
+          next.set(key, true)
         }
       }
-      return next.size === set.size && [...next].every((key) => set.has(key)) ? set : next
+      return next.size === before.size &&
+        [...next].every(([key, expanded]) => before.get(key) === expanded)
+        ? before
+        : next
     })
   }, [selected])
 

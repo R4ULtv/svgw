@@ -10,8 +10,18 @@ export interface LayerRow {
   siblings: number
 }
 
+function hasVisibleArtwork(node: LayerNode): boolean {
+  if (node.hidden) return false
+  return node.kind === 'object' || node.children.some(hasVisibleArtwork)
+}
+
+/** Only layers containing visible artwork open automatically; manual choices take precedence. */
+export function isLayerExpanded(node: LayerNode, expansion: ReadonlyMap<string, boolean>) {
+  return expansion.get(node.key) ?? (node.kind === 'layer' && hasVisibleArtwork(node))
+}
+
 /** Flatten only expanded branches, retaining the hierarchy for indentation and ARIA. */
-export function layerRows(tree: LayerNode[], toggled: Set<string>) {
+export function layerRows(tree: LayerNode[], expansion: ReadonlyMap<string, boolean>) {
   const rows: LayerRow[] = []
   function visit(nodes: LayerNode[], depth: number, hiddenAbove: boolean, lockedAbove: boolean) {
     nodes.forEach((node, index) => {
@@ -23,7 +33,7 @@ export function layerRows(tree: LayerNode[], toggled: Set<string>) {
         position: index + 1,
         siblings: nodes.length,
       })
-      if ((node.kind === 'layer') !== toggled.has(node.key))
+      if (isLayerExpanded(node, expansion))
         visit(node.children, depth + 1, hiddenAbove || node.hidden, lockedAbove || node.locked)
     })
   }
