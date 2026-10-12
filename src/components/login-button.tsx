@@ -1,13 +1,14 @@
 import { useId, useState } from 'react'
-import { ArrowUpRightIcon } from 'lucide-react'
+import { ArrowUpRightIcon, KeyRoundIcon } from 'lucide-react'
 import { useAdminSession } from '@/lib/admin-session'
-import { useCommands, useCommandScope } from './commands'
+import { CommandShortcut, useCommands, useCommandScope } from './commands'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
 import { Spinner } from './ui/spinner'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
-export function LoginButton() {
+export function LoginButton({ iconOnly = false }: { iconOnly?: boolean }) {
   const session = useAdminSession()
   const keyId = useId()
   const [open, setOpen] = useState(false)
@@ -25,20 +26,39 @@ export function LoginButton() {
     }
   }
 
+  const label = session.admin ? 'Log out' : 'Admin access'
+  const button = (
+    <Button
+      variant="ghost"
+      size={iconOnly ? 'icon-xs' : 'sm'}
+      className={
+        iconOnly ? (session.admin ? 'text-foreground' : 'text-muted-foreground') : undefined
+      }
+      aria-label={iconOnly ? label : undefined}
+      disabled={!session.authReady || busy}
+      onClick={() => (session.admin ? session.lock() : changeOpen(true))}
+    >
+      {iconOnly ? <KeyRoundIcon className="size-3.5" /> : session.admin ? 'Logout' : 'Login'}
+    </Button>
+  )
+
   return (
     <>
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={!session.authReady || busy}
-        onClick={() => (session.admin ? session.lock() : changeOpen(true))}
-      >
-        {session.admin ? 'Logout' : 'Login'}
-      </Button>
+      {iconOnly ? (
+        <Tooltip>
+          <TooltipTrigger render={button} />
+          <TooltipContent side="top">
+            {label}
+            {!session.admin && <CommandShortcut command="cloud.connect" />}
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        button
+      )}
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{session.admin ? 'Remote access' : 'Login'}</DialogTitle>
+            <DialogTitle>{session.admin ? 'Remote access' : 'Admin access'}</DialogTitle>
             <DialogDescription>
               {session.admin
                 ? 'You are logged in. Changes can be saved online.'

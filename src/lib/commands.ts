@@ -53,7 +53,7 @@ const hold = (key: IndividualKey) => ({ kind: 'hold', key }) satisfies Binding
 // `Mod` is Command on macOS and Control elsewhere, so every binding below is portable.
 export const commands = {
   'cloud.connect': {
-    title: 'Login',
+    title: 'Admin access',
     group: 'File',
     scope: 'global',
     binding: keys('Mod+Shift+K'),

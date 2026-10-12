@@ -40,7 +40,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import { CommandShortcut } from './commands'
 import { CloudControls } from './cloud-controls'
-import { LoginButton } from './login-button'
 import type { ThemePreference } from './theme'
 
 interface WorkspaceHeaderProps {
@@ -324,7 +323,6 @@ export function WorkspaceHeader({
           <TooltipContent side="bottom">Open an SVG or .json project</TooltipContent>
         </Tooltip>
         <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
-        <LoginButton />
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
