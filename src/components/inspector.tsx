@@ -23,9 +23,11 @@ import {
 } from 'lucide-react'
 import { PaintField } from '@/components/color-picker'
 import { DocumentColors } from '@/components/document-colors'
+import { DocumentInfo } from '@/components/document-info'
 import type { CommandId } from '@/lib/commands'
 import type { ColorReplacement, DocumentColor } from '@/lib/document-colors'
 import type { Selection, StyleTarget } from '@/lib/editor'
+import type { ArtworkStats } from '@/lib/layers'
 import type { Alignment, Bounds } from '@/lib/layers'
 import type { SelectionStore } from '@/lib/selection-store'
 import { cn } from '@/lib/utils'
@@ -71,6 +73,11 @@ interface InspectorProps {
   onReplaceColor: (from: string) => ColorReplacement | null
   /** Sets attributes on the selected rectangles, texts, or strokes; a null value removes one. */
   onStyleChange: (target: StyleTarget, values: Record<string, string | null>) => boolean
+  /** Changes whenever the document does. */
+  documentRevision: number
+  /** The SVG as it would be exported, and what it contains; shown with nothing selected. */
+  readDocument: () => { svg: string; stats: ArtworkStats } | null
+  onOptimize: () => void
 }
 
 const backdrops: { value: Backdrop; label: string; icon?: typeof SunIcon }[] = [
@@ -97,6 +104,9 @@ export function Inspector({
   colors,
   onReplaceColor,
   onStyleChange,
+  documentRevision,
+  readDocument,
+  onOptimize,
 }: InspectorProps) {
   const selection = useSyncExternalStore(
     selectionStore.subscribe,
@@ -110,7 +120,7 @@ export function Inspector({
 
   return (
     <div className="flex flex-col">
-      <Section title={selection ? selection.label : 'Selection'}>
+      <Section title={selection ? selection.label : 'Document'}>
         {selection ? (
           <>
             <SelectionTransform
@@ -194,10 +204,13 @@ export function Inspector({
             )}
           </>
         ) : (
-          <div className="flex items-start gap-2.5 text-xs text-muted-foreground">
-            <MousePointerClickIcon className="mt-0.5 size-4 shrink-0" />
-            <p>Select an object on the canvas to change its fill, stroke, and opacity.</p>
-          </div>
+          <>
+            <DocumentInfo revision={documentRevision} read={readDocument} onOptimize={onOptimize} />
+            <div className="flex items-start gap-2.5 text-[11px] leading-relaxed text-muted-foreground">
+              <MousePointerClickIcon className="mt-0.5 size-3.5 shrink-0" />
+              <p>Select an object to edit its position, colors, and style.</p>
+            </div>
+          </>
         )}
       </Section>
 

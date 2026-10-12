@@ -95,6 +95,34 @@ export const layerName = (layer: Element) =>
 const drawableChildren = (element: Element) =>
   [...element.children].filter((child) => DRAWABLE.has(child.localName))
 
+export interface ArtworkStats {
+  layers: number
+  /** Drawable objects inside the layers, groups included. */
+  objects: number
+  /** Object counts by type name ("Path", "Group"), most common first. */
+  types: [string, number][]
+}
+
+/** Counts the layers and the objects inside them. */
+export function artworkStats(content: SVGSVGElement): ArtworkStats {
+  const layers = [...content.children].filter(isLayer)
+  const counts = new Map<string, number>()
+  const visit = (parent: Element) => {
+    for (const child of drawableChildren(parent)) {
+      const type = TYPE_NAMES[child.localName] ?? child.localName
+      counts.set(type, (counts.get(type) ?? 0) + 1)
+      visit(child)
+    }
+  }
+  for (const layer of layers) visit(layer)
+  const types = [...counts].sort((a, b) => b[1] - a[1])
+  return {
+    layers: layers.length,
+    objects: types.reduce((total, [, count]) => total + count, 0),
+    types,
+  }
+}
+
 /** Empty layer/group containers and definitions do not count as document artwork. */
 export function hasArtwork(root: Element): boolean {
   for (const child of root.children) {

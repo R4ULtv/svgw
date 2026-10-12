@@ -51,6 +51,7 @@ import { CloudError } from '@/lib/cloud-api'
 import { blankSvg, downloadSvg, isSvgFile, sampleSvg, sanitizeSvg } from '@/lib/svg'
 import {
   alignSelection,
+  artworkStats,
   centerSelectionOnArtboard,
   createLayer,
   distributeSelection,
@@ -1637,6 +1638,19 @@ export function Workspace({ projectId }: { projectId: string }) {
       colors={documentColors}
       onReplaceColor={replaceColor}
       onStyleChange={changeStyle}
+      documentRevision={documentRevision}
+      readDocument={() =>
+        project && engine.current
+          ? {
+              svg: currentSvg(project, { forExport: true }),
+              stats: artworkStats(engine.current.getSvgContent()),
+            }
+          : null
+      }
+      onOptimize={() => {
+        commitAttribute()
+        setExporting(true)
+      }}
     />
   )
 
