@@ -43,8 +43,10 @@ import { useCloudProjects } from '@/lib/use-cloud-projects'
 import { CloudError } from '@/lib/cloud-api'
 import { blankSvg, downloadSvg, isSvgFile, sampleSvg, sanitizeSvg } from '@/lib/svg'
 import {
+  alignSelection,
   centerSelectionOnArtboard,
   createLayer,
+  distributeSelection,
   exportLayers,
   fitCanvasToArtwork as fitArtwork,
   hasArtwork,
@@ -54,6 +56,7 @@ import {
   promoteLayers,
   setSelectionBounds,
   setSelectionRotation,
+  type Alignment,
   type Bounds,
 } from '@/lib/layers'
 import {
@@ -870,6 +873,16 @@ export function Workspace({ projectId }: { projectId: string }) {
     return engine.current ? setSelectionRotation(engine.current, angle) : false
   }
 
+  function align(alignment: Alignment) {
+    commitAttribute()
+    if (engine.current) alignSelection(engine.current, alignment)
+  }
+
+  function distribute(axis: 'horizontal' | 'vertical') {
+    commitAttribute()
+    if (engine.current) distributeSelection(engine.current, axis)
+  }
+
   /**
    * Places pasted or imported SVG in a new layer of the open document, centered on the artboard.
    * With no project open, it becomes a new project instead.
@@ -1421,6 +1434,14 @@ export function Workspace({ projectId }: { projectId: string }) {
     },
     'selection.delete': () => engine.current?.deleteSelectedElements(),
     'selection.center': centerSelection,
+    'selection.alignLeft': () => align('left'),
+    'selection.alignCenter': () => align('center'),
+    'selection.alignRight': () => align('right'),
+    'selection.alignTop': () => align('top'),
+    'selection.alignMiddle': () => align('middle'),
+    'selection.alignBottom': () => align('bottom'),
+    'selection.distributeHorizontal': () => distribute('horizontal'),
+    'selection.distributeVertical': () => distribute('vertical'),
     'selection.nudgeLeft': () => nudge(-1, 0),
     'selection.nudgeRight': () => nudge(1, 0),
     'selection.nudgeUp': () => nudge(0, -1),
@@ -1584,6 +1605,8 @@ export function Workspace({ projectId }: { projectId: string }) {
       onCenterSelection={centerSelection}
       onBoundsChange={changeSelectionBounds}
       onRotate={rotateSelection}
+      onAlign={align}
+      onDistribute={distribute}
     />
   )
 

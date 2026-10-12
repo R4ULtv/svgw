@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
+  AlignCenterHorizontalIcon,
+  AlignCenterVerticalIcon,
+  AlignEndHorizontalIcon,
+  AlignEndVerticalIcon,
+  AlignHorizontalSpaceBetweenIcon,
+  AlignStartHorizontalIcon,
+  AlignStartVerticalIcon,
+  AlignVerticalSpaceBetweenIcon,
   ArrowLeftRightIcon,
   ChevronDownIcon,
   Link2Icon,
@@ -12,8 +20,9 @@ import {
   TargetIcon,
 } from 'lucide-react'
 import { PaintField } from '@/components/color-picker'
+import type { CommandId } from '@/lib/commands'
 import type { Selection } from '@/lib/editor'
-import type { Bounds } from '@/lib/layers'
+import type { Alignment, Bounds } from '@/lib/layers'
 import type { SelectionStore } from '@/lib/selection-store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -49,6 +58,10 @@ interface InspectorProps {
   onBoundsChange: (next: Bounds) => boolean
   /** Rotates a single selected object; returns false when it could not. */
   onRotate: (angle: number) => boolean
+  /** Aligns several objects with each other, or one with the artboard. */
+  onAlign: (alignment: Alignment) => void
+  /** Spaces three or more objects evenly. */
+  onDistribute: (axis: 'horizontal' | 'vertical') => void
 }
 
 const backdrops: { value: Backdrop; label: string; icon?: typeof SunIcon }[] = [
@@ -70,6 +83,8 @@ export function Inspector({
   onCenterSelection,
   onBoundsChange,
   onRotate,
+  onAlign,
+  onDistribute,
 }: InspectorProps) {
   const selection = useSyncExternalStore(
     selectionStore.subscribe,
@@ -90,6 +105,12 @@ export function Inspector({
               selection={selection}
               onBoundsChange={onBoundsChange}
               onRotate={onRotate}
+            />
+            <SelectionArrange
+              count={selection.count}
+              onAlign={onAlign}
+              onDistribute={onDistribute}
+              onCenterSelection={onCenterSelection}
             />
             <PaintField
               attr="fill"
@@ -152,11 +173,6 @@ export function Inspector({
                 Reset opacity
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={onCenterSelection}>
-              <TargetIcon />
-              Center on artboard
-              <CommandShortcut command="selection.center" className="ml-auto" />
-            </Button>
           </>
         ) : (
           <div className="flex items-start gap-2.5 text-xs text-muted-foreground">
@@ -393,6 +409,155 @@ function SelectionTransform({
         />
       )}
     </div>
+  )
+}
+
+const alignments: {
+  value: Alignment
+  label: string
+  command: CommandId
+  icon: typeof AlignStartVerticalIcon
+}[] = [
+  {
+    value: 'left',
+    label: 'Align left',
+    command: 'selection.alignLeft',
+    icon: AlignStartVerticalIcon,
+  },
+  {
+    value: 'center',
+    label: 'Align horizontal centers',
+    command: 'selection.alignCenter',
+    icon: AlignCenterVerticalIcon,
+  },
+  {
+    value: 'right',
+    label: 'Align right',
+    command: 'selection.alignRight',
+    icon: AlignEndVerticalIcon,
+  },
+  {
+    value: 'top',
+    label: 'Align top',
+    command: 'selection.alignTop',
+    icon: AlignStartHorizontalIcon,
+  },
+  {
+    value: 'middle',
+    label: 'Align vertical centers',
+    command: 'selection.alignMiddle',
+    icon: AlignCenterHorizontalIcon,
+  },
+  {
+    value: 'bottom',
+    label: 'Align bottom',
+    command: 'selection.alignBottom',
+    icon: AlignEndHorizontalIcon,
+  },
+]
+
+/** Align, distribute, and center. A single object aligns with the artboard. */
+function SelectionArrange({
+  count,
+  onAlign,
+  onDistribute,
+  onCenterSelection,
+}: {
+  count: number
+  onAlign: InspectorProps['onAlign']
+  onDistribute: InspectorProps['onDistribute']
+  onCenterSelection: InspectorProps['onCenterSelection']
+}) {
+  const target = count === 1 ? ' to artboard' : ''
+  return (
+    <div className="flex flex-col gap-1.5" role="group" aria-label="Arrange">
+      <div className="grid grid-cols-6">
+        {alignments.map(({ value, label, command, icon: Icon }) => (
+          <ArrangeButton
+            key={value}
+            label={label + target}
+            command={command}
+            onClick={() => onAlign(value)}
+          >
+            <Icon />
+          </ArrangeButton>
+        ))}
+      </div>
+      <div className="grid grid-cols-6">
+        <ArrangeButton
+          label="Distribute horizontal spacing"
+          command="selection.distributeHorizontal"
+          disabled={count < 3}
+          onClick={() => onDistribute('horizontal')}
+        >
+          <AlignHorizontalSpaceBetweenIcon />
+        </ArrangeButton>
+        <ArrangeButton
+          label="Distribute vertical spacing"
+          command="selection.distributeVertical"
+          disabled={count < 3}
+          onClick={() => onDistribute('vertical')}
+        >
+          <AlignVerticalSpaceBetweenIcon />
+        </ArrangeButton>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="outline"
+                size="sm"
+                className="col-span-4 ml-1.5 font-normal"
+                onClick={onCenterSelection}
+              />
+            }
+          >
+            <TargetIcon />
+            Center on artboard
+          </TooltipTrigger>
+          <TooltipContent>
+            Center on artboard
+            <CommandShortcut command="selection.center" />
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  )
+}
+
+/** One segment of a joined row of outline icon buttons, with its shortcut in the tooltip. */
+function ArrangeButton({
+  label,
+  command,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  command: CommandId
+  disabled?: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <Tooltip>
+      {/* Wrapper keeps the tooltip available while the button is disabled. */}
+      <TooltipTrigger render={<span className="inline-flex [&:not(:first-child)]:-ml-px" />}>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label={label}
+          disabled={disabled}
+          onClick={onClick}
+          className="w-full"
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {label}
+        <CommandShortcut command={command} />
+      </TooltipContent>
+    </Tooltip>
   )
 }
 

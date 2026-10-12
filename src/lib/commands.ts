@@ -140,6 +140,55 @@ export const commands = {
     scope: 'selection',
     binding: keys('Shift+C'),
   },
+  // Figma's alignment shortcuts. With Option held, macOS types other characters; these match by key position.
+  'selection.alignLeft': {
+    title: 'Align left',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Alt+A'),
+  },
+  'selection.alignCenter': {
+    title: 'Align horizontal centers',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Alt+H'),
+  },
+  'selection.alignRight': {
+    title: 'Align right',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Alt+D'),
+  },
+  'selection.alignTop': {
+    title: 'Align top',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Alt+W'),
+  },
+  'selection.alignMiddle': {
+    title: 'Align vertical centers',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Alt+V'),
+  },
+  'selection.alignBottom': {
+    title: 'Align bottom',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Alt+S'),
+  },
+  'selection.distributeHorizontal': {
+    title: 'Distribute horizontal spacing',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Alt+Shift+H'),
+  },
+  'selection.distributeVertical': {
+    title: 'Distribute vertical spacing',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Alt+Shift+V'),
+  },
   'selection.nudgeLeft': {
     title: 'Nudge left 1px',
     group: 'Selection',
