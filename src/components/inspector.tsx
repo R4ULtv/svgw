@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   AlignCenterHorizontalIcon,
   AlignCenterVerticalIcon,
@@ -16,14 +16,16 @@ import {
   MousePointerClickIcon,
   RotateCwIcon,
   ScanIcon,
+  SquareRoundCornerIcon,
   SunIcon,
   TargetIcon,
+  TypeIcon,
 } from 'lucide-react'
 import { PaintField } from '@/components/color-picker'
 import { DocumentColors } from '@/components/document-colors'
 import type { CommandId } from '@/lib/commands'
 import type { ColorReplacement, DocumentColor } from '@/lib/document-colors'
-import type { Selection } from '@/lib/editor'
+import type { Selection, StyleTarget } from '@/lib/editor'
 import type { Alignment, Bounds } from '@/lib/layers'
 import type { SelectionStore } from '@/lib/selection-store'
 import { cn } from '@/lib/utils'
@@ -67,6 +69,8 @@ interface InspectorProps {
   /** Every color in the document, most used first. */
   colors: DocumentColor[]
   onReplaceColor: (from: string) => ColorReplacement | null
+  /** Sets attributes on the selected rectangles, texts, or strokes; a null value removes one. */
+  onStyleChange: (target: StyleTarget, values: Record<string, string | null>) => boolean
 }
 
 const backdrops: { value: Backdrop; label: string; icon?: typeof SunIcon }[] = [
@@ -92,6 +96,7 @@ export function Inspector({
   onDistribute,
   colors,
   onReplaceColor,
+  onStyleChange,
 }: InspectorProps) {
   const selection = useSyncExternalStore(
     selectionStore.subscribe,
@@ -112,6 +117,7 @@ export function Inspector({
               selection={selection}
               onBoundsChange={onBoundsChange}
               onRotate={onRotate}
+              onStyleChange={onStyleChange}
             />
             <SelectionArrange
               count={selection.count}
@@ -119,6 +125,9 @@ export function Inspector({
               onDistribute={onDistribute}
               onCenterSelection={onCenterSelection}
             />
+            {selection.fontFamily !== null && (
+              <TextFields selection={selection} onStyleChange={onStyleChange} />
+            )}
             <PaintField
               attr="fill"
               label="Fill"
@@ -152,6 +161,9 @@ export function Inspector({
                   className="w-20 tabular-nums"
                 />
               </Field>
+            )}
+            {selection.stroke !== 'none' && (
+              <StrokeFields selection={selection} onStyleChange={onStyleChange} />
             )}
             <Field label="Opacity">
               <div className="flex flex-1 items-center gap-3">
@@ -359,10 +371,12 @@ function SelectionTransform({
   selection,
   onBoundsChange,
   onRotate,
+  onStyleChange,
 }: {
   selection: Selection
   onBoundsChange: InspectorProps['onBoundsChange']
   onRotate: InspectorProps['onRotate']
+  onStyleChange: InspectorProps['onStyleChange']
 }) {
   const [linked, setLinked] = useState(false)
   const { x, y, width, height, rotation } = selection
@@ -422,6 +436,20 @@ function SelectionTransform({
           value={rotation}
           // Wraps to the range SVG-Edit's rotation handle uses, -180° to 180°.
           onCommit={(value) => onRotate(((((value + 180) % 360) + 360) % 360) - 180)}
+        />
+      )}
+      {selection.radius !== null && (
+        <NumberField
+          label="Corner radius"
+          prefix={<SquareRoundCornerIcon className="size-3" />}
+          value={selection.radius}
+          min={0}
+          onCommit={(value) =>
+            onStyleChange(
+              'rect',
+              value > 0 ? { rx: String(value), ry: String(value) } : { rx: null, ry: null },
+            )
+          }
         />
       )}
     </div>
@@ -574,6 +602,237 @@ function ArrangeButton({
         <CommandShortcut command={command} />
       </TooltipContent>
     </Tooltip>
+  )
+}
+
+const caps = [
+  { value: 'butt', label: 'Flat' },
+  { value: 'round', label: 'Round' },
+  { value: 'square', label: 'Square' },
+]
+const joins = [
+  { value: 'miter', label: 'Miter' },
+  { value: 'round', label: 'Round' },
+  { value: 'bevel', label: 'Bevel' },
+]
+
+/** Line caps, joins, and dashes of the selection's strokes. */
+function StrokeFields({
+  selection,
+  onStyleChange,
+}: {
+  selection: Selection
+  onStyleChange: InspectorProps['onStyleChange']
+}) {
+  const id = useId()
+  return (
+    <>
+      <Field label="Cap">
+        <Choice
+          label="Line cap"
+          options={caps}
+          value={selection.strokeLinecap}
+          onChange={(value) =>
+            // Flat is the default; leave it implicit.
+            onStyleChange('stroke', { 'stroke-linecap': value === 'butt' ? null : value })
+          }
+        />
+      </Field>
+      <Field label="Join">
+        <Choice
+          label="Line join"
+          options={joins}
+          value={selection.strokeLinejoin}
+          onChange={(value) =>
+            onStyleChange('stroke', { 'stroke-linejoin': value === 'miter' ? null : value })
+          }
+        />
+      </Field>
+      <Field label="Dashes" htmlFor={id}>
+        <TextField
+          id={id}
+          value={selection.strokeDasharray === 'none' ? '' : selection.strokeDasharray}
+          placeholder="Solid, or e.g. 6 3"
+          title="Dash and gap lengths in px, repeating. Leave empty for a solid line."
+          parse={(text) => {
+            if (!text.trim()) return ''
+            const parts = text
+              .trim()
+              .split(/[\s,]+/)
+              .map(Number)
+            return parts.every((part) => Number.isFinite(part) && part >= 0) &&
+              parts.some((part) => part > 0)
+              ? parts.join(' ')
+              : null
+          }}
+          onCommit={(value) => onStyleChange('stroke', { 'stroke-dasharray': value || null })}
+        />
+      </Field>
+    </>
+  )
+}
+
+const FONTS = [
+  'sans-serif',
+  'serif',
+  'monospace',
+  'system-ui',
+  'Arial',
+  'Helvetica',
+  'Verdana',
+  'Georgia',
+  'Times New Roman',
+  'Courier New',
+]
+
+/** Font family, size, and weight of the selected texts. */
+function TextFields({
+  selection,
+  onStyleChange,
+}: {
+  selection: Selection
+  onStyleChange: InspectorProps['onStyleChange']
+}) {
+  const id = useId()
+  return (
+    <>
+      <Field label="Font" htmlFor={id}>
+        <TextField
+          id={id}
+          value={selection.fontFamily ?? ''}
+          placeholder="sans-serif"
+          title="Viewers need this font installed; generic families such as sans-serif always work."
+          list={`${id}-fonts`}
+          parse={(text) => text.trim() || null}
+          onCommit={(value) => onStyleChange('text', { 'font-family': value })}
+        />
+        <datalist id={`${id}-fonts`}>
+          {FONTS.map((font) => (
+            <option key={font} value={font} />
+          ))}
+        </datalist>
+      </Field>
+      <Field label="Size">
+        <NumberField
+          label="Font size"
+          prefix={<TypeIcon className="size-3" />}
+          unit="px"
+          value={selection.fontSize ?? 16}
+          min={0.5}
+          onCommit={(value) => onStyleChange('text', { 'font-size': String(value) })}
+        />
+      </Field>
+      <Field label="Weight">
+        <Choice
+          label="Font weight"
+          options={[
+            { value: '400', label: 'Regular' },
+            { value: '700', label: 'Bold' },
+          ]}
+          value={String(selection.fontWeight)}
+          onChange={(value) =>
+            onStyleChange('text', { 'font-weight': value === '400' ? null : 'bold' })
+          }
+        />
+      </Field>
+    </>
+  )
+}
+
+/** A joined row of text buttons choosing one value. */
+function Choice({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <ToggleGroup
+      aria-label={label}
+      value={[value]}
+      onValueChange={(values) => {
+        if (values[0] && values[0] !== value) onChange(values[0])
+      }}
+      variant="outline"
+      size="sm"
+      spacing={0}
+      className="w-full"
+    >
+      {options.map((option) => (
+        <ToggleGroupItem
+          key={option.value}
+          value={option.value}
+          className="min-w-0 flex-1 px-1 text-[11px]"
+        >
+          {option.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  )
+}
+
+/**
+ * A text input that applies on Enter or blur and restores the current value on Escape. `parse`
+ * returns the value to apply, or null when the text is invalid.
+ */
+function TextField({
+  id,
+  value,
+  placeholder,
+  title,
+  list,
+  parse,
+  onCommit,
+}: {
+  id: string
+  value: string
+  placeholder?: string
+  title?: string
+  list?: string
+  parse: (text: string) => string | null
+  onCommit: (value: string) => void
+}) {
+  const [draft, setDraft] = useState(value)
+  const cancelling = useRef(false)
+  useEffect(() => setDraft(value), [value])
+  const invalid = parse(draft) === null
+
+  function apply() {
+    const next = parse(draft)
+    if (next === null || next === value) setDraft(value)
+    else onCommit(next)
+  }
+
+  return (
+    <Input
+      id={id}
+      value={draft}
+      placeholder={placeholder}
+      title={title}
+      list={list}
+      spellCheck={false}
+      autoComplete="off"
+      aria-invalid={(draft !== value && invalid) || undefined}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (cancelling.current) cancelling.current = false
+        else if (draft !== value) apply()
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') apply()
+        if (event.key === 'Escape') {
+          cancelling.current = true
+          setDraft(value)
+          event.currentTarget.blur()
+        }
+      }}
+      className="min-w-0 flex-1 text-xs"
+    />
   )
 }
 

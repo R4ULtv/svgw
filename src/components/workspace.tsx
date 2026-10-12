@@ -15,6 +15,7 @@ import {
   paintTargets,
   stripNullAttributes,
   type Selection,
+  type StyleTarget,
   type SvgEditor,
   type Tool,
 } from '@/lib/editor'
@@ -26,6 +27,7 @@ import {
   type DocumentColor,
 } from '@/lib/document-colors'
 import { createSelectionStore } from '@/lib/selection-store'
+import { setSelectionStyle } from '@/lib/selection-style'
 import { syncDocumentSize } from '@/lib/document-dimensions'
 import {
   createProject,
@@ -888,6 +890,11 @@ export function Workspace({ projectId }: { projectId: string }) {
     return engine.current ? setSelectionRotation(engine.current, angle) : false
   }
 
+  function changeStyle(target: StyleTarget, values: Record<string, string | null>) {
+    commitAttribute()
+    return engine.current ? setSelectionStyle(engine.current, target, values) : false
+  }
+
   function replaceColor(from: string) {
     commitAttribute()
     return engine.current ? startColorReplacement(engine.current, from) : null
@@ -1629,6 +1636,7 @@ export function Workspace({ projectId }: { projectId: string }) {
       onDistribute={distribute}
       colors={documentColors}
       onReplaceColor={replaceColor}
+      onStyleChange={changeStyle}
     />
   )
 

@@ -97,6 +97,25 @@ export interface Selection {
   height: number | null
   /** Degrees; null unless a single object is selected. */
   rotation: number | null
+  /** Stroke details of the first stroked object: CSS keywords, and 'none' or a list such as "6 3". */
+  strokeLinecap: string
+  strokeLinejoin: string
+  strokeDasharray: string
+  /** Corner radius in px; null unless every selected object is a rectangle. */
+  radius: number | null
+  /** Font of the first text; null unless every selected object is text. */
+  fontFamily: string | null
+  fontSize: number | null
+  fontWeight: number | null
+}
+
+/** The selected objects edited by a shape-specific field. */
+export type StyleTarget = 'rect' | 'text' | 'stroke'
+
+/** Which of `elements` a shape-specific field changes; empty when it does not apply to all of them. */
+export function styleTargets(elements: Element[], target: StyleTarget) {
+  if (target === 'stroke') return paintTargets(elements, 'stroke')
+  return elements.every((element) => element.localName === target) ? elements : []
 }
 
 /**
@@ -187,6 +206,7 @@ export function readSelection(elements: Element[], content: SVGSVGElement): Sele
   let fill: string | undefined
   let stroke: string | undefined
   let strokeWidth = 0
+  let strokeDetails = { strokeLinecap: 'butt', strokeLinejoin: 'miter', strokeDasharray: 'none' }
   const colors = new Map<string, string>()
   const paintColor = (value: string) => {
     if (!colors.has(value)) colors.set(value, normalizeColor(value) ?? 'none')
@@ -195,7 +215,18 @@ export function readSelection(elements: Element[], content: SVGSVGElement): Sele
   if (!targets.length) strokeWidth = parseFloat(getComputedStyle(first).strokeWidth) || 0
   for (const [index, element] of targets.entries()) {
     const style = getComputedStyle(element)
-    if (index === 0) strokeWidth = parseFloat(style.strokeWidth) || 0
+    if (index === 0) {
+      strokeWidth = parseFloat(style.strokeWidth) || 0
+      strokeDetails = {
+        strokeLinecap: style.strokeLinecap,
+        strokeLinejoin: style.strokeLinejoin,
+        // Computed as "6px, 3px"; SVG writes "6 3".
+        strokeDasharray:
+          style.strokeDasharray === 'none'
+            ? 'none'
+            : style.strokeDasharray.replace(/px/g, '').replace(/,\s*/g, ' '),
+      }
+    }
     if (fill !== 'mixed' && element.localName !== 'line' && element.localName !== 'polyline') {
       const color = paintColor(style.fill)
       fill = fill === undefined || fill === color ? color : 'mixed'
@@ -221,5 +252,20 @@ export function readSelection(elements: Element[], content: SVGSVGElement): Sele
     width: bounds ? (rotated?.width ?? bounds.width) : null,
     height: bounds ? (rotated?.height ?? bounds.height) : null,
     rotation: elements.length === 1 ? rotationOf(first) : null,
+    ...strokeDetails,
+    radius: styleTargets(elements, 'rect').length
+      ? Number(first.getAttribute('rx') ?? first.getAttribute('ry') ?? 0) || 0
+      : null,
+    ...readFont(styleTargets(elements, 'text')[0]),
+  }
+}
+
+function readFont(text: Element | undefined) {
+  if (!text) return { fontFamily: null, fontSize: null, fontWeight: null }
+  const style = getComputedStyle(text)
+  return {
+    fontFamily: style.fontFamily.replace(/["']/g, ''),
+    fontSize: parseFloat(style.fontSize) || null,
+    fontWeight: Number(style.fontWeight) || 400,
   }
 }

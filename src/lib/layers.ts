@@ -466,7 +466,7 @@ export function artworkBounds(
 }
 
 /** The selected objects that move on their own, or null when any of them is locked or hidden. */
-function selectionRoots(editor: SvgEditor) {
+export function selectionRoots(editor: SvgEditor) {
   const selected = editor.getSelectedElements().filter((element): element is Element => !!element)
   if (!selected.length || selected.some(isBlocked)) return null
   // A selected ancestor already moves its descendants.
@@ -569,7 +569,7 @@ interface ElementEdit {
  * rewrite. Returns false, changing nothing, when an element's coordinates cannot be resolved, and
  * also when nothing changed.
  */
-function editElements(
+export function editElements(
   editor: SvgEditor,
   label: string,
   elements: Element[],
@@ -639,9 +639,11 @@ function editElements(
       if (node === element) old.transform = transform
       batch.addSubCommand(new ChangeElementCommand(node, old))
     }
-    editor.gettingSelectorManager().requestSelector(element).resize()
   }
   if (batch.isEmpty()) return false
+  // Edited objects may sit inside a selected group; only selected ones have handles.
+  for (const element of editor.getSelectedElements())
+    if (element) editor.gettingSelectorManager().requestSelector(element).resize()
   editor.undoMgr.addCommandToHistory(batch)
   return true
 }
