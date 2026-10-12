@@ -20,6 +20,11 @@ import {
 } from '@/lib/editor'
 import { createAttributePreview } from '@/lib/attribute-preview'
 import { createFrameTask } from '@/lib/frame-task'
+import {
+  readDocumentColors,
+  startColorReplacement,
+  type DocumentColor,
+} from '@/lib/document-colors'
 import { createSelectionStore } from '@/lib/selection-store'
 import { syncDocumentSize } from '@/lib/document-dimensions'
 import {
@@ -167,6 +172,7 @@ export function Workspace({ projectId }: { projectId: string }) {
   const [starterDismissed, setStarterDismissed] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [selectionStore] = useState(createSelectionStore)
+  const [documentColors, setDocumentColors] = useState<DocumentColor[]>([])
   const [history, setHistory] = useState({ undo: false, redo: false })
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [saveState, setSaveState] = useState<SaveState>('saved')
@@ -444,6 +450,15 @@ export function Workspace({ projectId }: { projectId: string }) {
       previous === 'hand' && current === 'select' ? 'hand' : isTool(current) ? current : 'select',
     )
     if (documentRefresh.current) {
+      const colors = readDocumentColors(editor.getSvgContent())
+      setDocumentColors((current) =>
+        current.length === colors.length &&
+        current.every(
+          (item, index) => item.color === colors[index].color && item.uses === colors[index].uses,
+        )
+          ? current
+          : colors,
+      )
       const artwork = hasArtwork(editor.getSvgContent())
       setCanvasEmpty(!artwork)
       if (artwork) setStarterDismissed(true)
@@ -871,6 +886,11 @@ export function Workspace({ projectId }: { projectId: string }) {
   function rotateSelection(angle: number) {
     commitAttribute()
     return engine.current ? setSelectionRotation(engine.current, angle) : false
+  }
+
+  function replaceColor(from: string) {
+    commitAttribute()
+    return engine.current ? startColorReplacement(engine.current, from) : null
   }
 
   function align(alignment: Alignment) {
@@ -1607,6 +1627,8 @@ export function Workspace({ projectId }: { projectId: string }) {
       onRotate={rotateSelection}
       onAlign={align}
       onDistribute={distribute}
+      colors={documentColors}
+      onReplaceColor={replaceColor}
     />
   )
 

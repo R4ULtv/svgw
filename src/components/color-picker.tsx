@@ -195,7 +195,7 @@ export function PaintField({ attr, label, value, onPreview, onCommit }: PaintFie
   )
 }
 
-function ColorValueInput({
+export function ColorValueInput({
   id,
   label,
   color,

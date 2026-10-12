@@ -20,7 +20,9 @@ import {
   TargetIcon,
 } from 'lucide-react'
 import { PaintField } from '@/components/color-picker'
+import { DocumentColors } from '@/components/document-colors'
 import type { CommandId } from '@/lib/commands'
+import type { ColorReplacement, DocumentColor } from '@/lib/document-colors'
 import type { Selection } from '@/lib/editor'
 import type { Alignment, Bounds } from '@/lib/layers'
 import type { SelectionStore } from '@/lib/selection-store'
@@ -62,6 +64,9 @@ interface InspectorProps {
   onAlign: (alignment: Alignment) => void
   /** Spaces three or more objects evenly. */
   onDistribute: (axis: 'horizontal' | 'vertical') => void
+  /** Every color in the document, most used first. */
+  colors: DocumentColor[]
+  onReplaceColor: (from: string) => ColorReplacement | null
 }
 
 const backdrops: { value: Backdrop; label: string; icon?: typeof SunIcon }[] = [
@@ -85,6 +90,8 @@ export function Inspector({
   onRotate,
   onAlign,
   onDistribute,
+  colors,
+  onReplaceColor,
 }: InspectorProps) {
   const selection = useSyncExternalStore(
     selectionStore.subscribe,
@@ -180,6 +187,15 @@ export function Inspector({
             <p>Select an object on the canvas to change its fill, stroke, and opacity.</p>
           </div>
         )}
+      </Section>
+
+      <Section title="Colors">
+        <DocumentColors
+          colors={colors}
+          selection={selection}
+          onApply={set}
+          onReplace={onReplaceColor}
+        />
       </Section>
 
       <Section title="Canvas">
