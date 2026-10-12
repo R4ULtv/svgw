@@ -29,19 +29,6 @@ const tools: { value: Tool; label: string; command: CommandId; icon: LucideIcon 
   { value: 'path', label: 'Pen', command: 'tool.pen', icon: PenToolIcon },
 ]
 
-/** Status bar guidance for the active tool. `escape` is the current label of the Escape command. */
-export function toolHint(tool: Tool, escape: string) {
-  const back = escape ? ` · ${escape} to go back to Select` : ''
-  return {
-    select:
-      'Click an object to select it · Shift-click to add · Double-click a group to edit inside',
-    rect: `Drag on the canvas to draw a rectangle${back}`,
-    ellipse: `Drag on the canvas to draw an ellipse${back}`,
-    path: 'Click to place points, drag to curve · Click the first point to close the shape',
-    hand: 'Drag to move around the canvas · Hold Space to pan from any tool · Ctrl + scroll to zoom',
-  }[tool]
-}
-
 interface EditorToolbarProps {
   ref?: Ref<HTMLDivElement>
   tool: Tool

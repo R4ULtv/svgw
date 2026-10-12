@@ -70,7 +70,6 @@ import {
 import { extractSvg, inlineStyles, insertSvg, PLACE_LABEL } from '@/lib/svg-import'
 import { PROJECT_ACCEPT, type ImportedDocument } from '@/lib/project-import'
 import { downloadProjectFile } from '@/lib/project-download'
-import { bindingText } from '@/lib/commands'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -109,17 +108,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import {
-  CommandShortcut,
-  useBinding,
-  useCommandHeld,
-  useCommands,
-  useCommandScope,
-} from './commands'
-import { EditorToolbar, toolHint } from './editor-toolbar'
+import { CommandShortcut, useCommandHeld, useCommands, useCommandScope } from './commands'
+import { EditorToolbar } from './editor-toolbar'
+import { CanvasZoomHint, EditorStatusHint } from './editor-status-hint'
 import { ExportDialog } from './export-dialog'
 import { Inspector, type Backdrop } from './inspector'
 import { Logo } from './logo'
+import { LoginButton } from './login-button'
 import { CanvasGuides } from './canvas-guides'
 import { CanvasStarter } from './canvas-starter'
 import { LayersPanel } from './layers-panel'
@@ -220,8 +215,6 @@ export function Workspace({ projectId }: { projectId: string }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [pendingRemoteDelete, setPendingRemoteDelete] = useState<RemoteProject | null>(null)
-  const undoBinding = useBinding('edit.undo')
-  const escapeBinding = useBinding('edit.escape')
 
   // Saves are debounced, then serialized so a slower older write cannot replace a newer document.
   const writes = useRef(Promise.resolve())
@@ -1756,30 +1749,6 @@ export function Workspace({ projectId }: { projectId: string }) {
                 <CanvasStarter onStart={selectTool} onDismiss={() => setStarterDismissed(true)} />
               )}
           </div>
-          {project && (
-            <footer className="flex h-8 shrink-0 items-center justify-between gap-4 border-t bg-background px-3 text-[11px] text-muted-foreground">
-              <span className="truncate">
-                {previewing
-                  ? 'Previewing without selection outlines · release to edit'
-                  : selection
-                    ? `${selection.label} selected · arrows to nudge, ${bindingText(undoBinding)} to undo`
-                    : canvasEmpty && tool === 'select'
-                      ? 'Choose Rectangle, Ellipse, or Pen to start drawing'
-                      : toolHint(tool, bindingText(escapeBinding))}
-              </span>
-              <div className="flex shrink-0 items-center gap-3">
-                <span className="tabular-nums">
-                  {size.w} × {size.h} px
-                </span>
-                <ZoomControl
-                  zoom={zoom}
-                  onStep={stepZoom}
-                  onZoom={(value) => zoomTo(value)}
-                  onFit={() => zoomToFit()}
-                />
-              </div>
-            </footer>
-          )}
         </main>
 
         <aside
@@ -1789,6 +1758,44 @@ export function Workspace({ projectId }: { projectId: string }) {
           {project && inspector}
         </aside>
       </div>
+
+      <footer className="flex h-8 shrink-0 items-center gap-3 border-t bg-background px-3 text-[11px] text-muted-foreground">
+        <div className="flex shrink-0 items-center gap-1">
+          <Link
+            to="/"
+            aria-label="svgw home"
+            className="flex size-6 shrink-0 items-center justify-center outline-none hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <Logo className="size-4.5" />
+          </Link>
+          <LoginButton iconOnly />
+        </div>
+        {project && (
+          <>
+            <span className="h-3.5 w-px shrink-0 bg-border" aria-hidden="true" />
+            <EditorStatusHint
+              tool={tool}
+              mode={mode}
+              canvasEmpty={canvasEmpty}
+              selectionLabel={selection?.label}
+              previewing={previewing}
+              spacePan={spacePan}
+              grabbing={grabbing}
+            />
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="hidden tabular-nums sm:inline">
+                {size.w} × {size.h} px
+              </span>
+              <ZoomControl
+                zoom={zoom}
+                onStep={stepZoom}
+                onZoom={(value) => zoomTo(value)}
+                onFit={() => zoomToFit()}
+              />
+            </div>
+          </>
+        )}
+      </footer>
 
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent
@@ -1974,7 +1981,7 @@ function ZoomControl({
           ))}
           <DropdownMenuSeparator />
           <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
-            100% fits the artboard. Hold Ctrl and scroll, or pinch on a trackpad.
+            100% fits the artboard. <CanvasZoomHint />, or pinch on a trackpad.
           </p>
         </DropdownMenuContent>
       </DropdownMenu>

@@ -196,10 +196,12 @@ export function useBinding(id: CommandId) {
 export function Shortcut({
   binding,
   all = false,
+  showHold = true,
   className,
 }: {
   binding: Binding
   all?: boolean
+  showHold?: boolean
   className?: string
 }) {
   const chords = bindingChords(binding)
@@ -208,7 +210,9 @@ export function Shortcut({
   const separator = binding.kind === 'sequence' ? 'then' : 'or'
   return (
     <span className={cn('inline-flex flex-wrap items-center gap-1', className)}>
-      {binding.kind === 'hold' && <span className="text-[11px] text-muted-foreground">Hold</span>}
+      {binding.kind === 'hold' && showHold && (
+        <span className="text-[11px] text-muted-foreground">Hold</span>
+      )}
       {shown.map((parts, index) => (
         <Fragment key={index}>
           {index > 0 && <span className="text-[11px] text-muted-foreground">{separator}</span>}
@@ -226,13 +230,17 @@ export function Shortcut({
 export function CommandShortcut({
   command,
   all,
+  showHold,
   className,
 }: {
   command: CommandId
   all?: boolean
+  showHold?: boolean
   className?: string
 }) {
-  return <Shortcut binding={useBinding(command)} all={all} className={className} />
+  return (
+    <Shortcut binding={useBinding(command)} all={all} showHold={showHold} className={className} />
+  )
 }
 
 /**
