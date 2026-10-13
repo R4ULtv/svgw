@@ -9,11 +9,13 @@ A browser-based SVG workspace for creating, editing, and exporting vector artwor
 - Organize artwork with nested layers, visibility, locking, renaming, and drag-and-drop reordering.
 - Edit fill, stroke, and opacity with HEX, RGB, HSL, and OKLCH color inputs.
 - Resize the artboard, fit it to artwork, and use rulers, guides, and snapping.
-- Autosave local drafts, download `.json` projects with guides and layer locks, or export standard and SVGO-optimized SVGs.
+- Autosave local drafts, download `.json` projects with guides and layer locks, or export standard and SVGO-optimized SVGs. Export the entire document or only visible artwork, keeping the canvas size and required SVG resources.
 - Switch between light and dark themes and customize keyboard shortcuts.
 - On your own instance, save private online drafts, restore or pin versions, and publish selected snapshots.
 
 Affinity conversion is a local development tool, kept out of the deployed website. Run `pnpm convert:affinity path/to/design.af --out-dir work/converted`, then import the generated `.json` file on the website. It also writes a standard SVG and conversion notes. For Illustrator, export SVG from the desktop app. See [local conversion and project transfer](docs/design-import.md). Local drafts belong to the current browser and site; download a project file to keep an editable backup.
+
+**Export → Download SVG** exports the artwork currently shown in Layers by default; press **Cmd/Ctrl+Shift+S** for the same action. Hidden layers and objects, empty groups, and unused definitions are excluded. SVG exports remove layer labels and redundant group wrappers, while preserving groups needed for transforms, styles, and references. Use **Download full SVG** to include hidden artwork. **Optimize & download…** (**Cmd/Ctrl+Shift+E**) also defaults to **Visible artwork only**, with **Entire document** available. Both keep the artboard dimensions; editable project downloads preserve every layer and its name.
 
 ## Local development
 

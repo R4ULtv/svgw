@@ -1355,7 +1355,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     },
     'file.save': saveNow,
     'file.download': () => {
-      if (project) downloadSvg(currentSvg(project, { forExport: true }), project.name)
+      downloadArtwork()
     },
     'file.optimize': () => {
       commitAttribute()
@@ -1523,9 +1523,8 @@ export function Workspace({ projectId }: { projectId: string }) {
         }}
         onLayers={showLayers}
         onSave={saveNow}
-        onDownload={() => {
-          if (project) downloadSvg(currentSvg(project, { forExport: true }), project.name)
-        }}
+        onDownload={() => downloadArtwork()}
+        onDownloadFull={() => downloadArtwork('all')}
         onDownloadProject={() => {
           if (project) downloadProjectFile({ name: project.name, svg: currentSvg(project), guides })
         }}
