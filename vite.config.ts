@@ -1,5 +1,5 @@
 import { fileURLToPath, URL } from 'node:url'
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import tailwindcss from '@tailwindcss/vite'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
@@ -25,9 +25,25 @@ export default defineConfig({
           // Emit rewrites only after their target exists. The same asset runtime
           // serves build-time requests, so public rewrites would break prerendering.
           onSuccess: async () => {
+            // Project links share one preview image, so they get a copy of the shell
+            // whose Open Graph tags describe a project instead of the homepage.
+            const shell = await readFile(
+              new URL('./dist/client/_shell.html', import.meta.url),
+              'utf8',
+            )
+            const projectShell = shell
+              .replaceAll('/og/home.png', '/og/project.png')
+              .replace(
+                /(<meta property="og:title" content=")[^"]*/,
+                '$1Open it up. Make it yours. — svgw',
+              )
+              .replace(/(<meta property="og:image:alt" content=")[^"]*/, '$1An SVG project in svgw')
+            if (projectShell.split('/og/project.png').length !== 3)
+              throw new Error('The project shell is missing its Open Graph image tags.')
+            await writeFile(new URL('./dist/client/_project.html', import.meta.url), projectShell)
             await writeFile(
               new URL('./dist/client/_redirects', import.meta.url),
-              '/projects /_shell 200\n/projects/ /_shell 200\n/project/:id /_shell 200\n/project/:id/ /_shell 200\n',
+              '/projects /_shell 200\n/projects/ /_shell 200\n/project/:id /_project 200\n/project/:id/ /_project 200\n',
             )
           },
         },

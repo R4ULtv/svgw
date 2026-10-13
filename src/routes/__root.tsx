@@ -9,6 +9,9 @@ import { AdminSessionProvider } from '@/lib/admin-session'
 import '../styles.css'
 import sansFont from '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2?url'
 
+// Social crawlers require absolute image URLs. Matches the custom domain in wrangler.jsonc.
+const SITE_URL = 'https://svgw.raulcarini.dev'
+
 export const Route = createRootRoute({
   head: () => ({
     meta: [
@@ -16,6 +19,17 @@ export const Route = createRootRoute({
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'svgw — your SVG workspace' },
       { name: 'description', content: 'Edit, save, and optimize SVGs in your browser.' },
+      // The build swaps these image tags in the project shell; see vite.config.ts.
+      { property: 'og:type', content: 'website' },
+      { property: 'og:site_name', content: 'svgw' },
+      { property: 'og:title', content: 'svgw — your SVG workspace' },
+      { property: 'og:description', content: 'Edit, save, and optimize SVGs in your browser.' },
+      { property: 'og:image', content: `${SITE_URL}/og/home.png` },
+      { property: 'og:image:width', content: '1200' },
+      { property: 'og:image:height', content: '630' },
+      { property: 'og:image:alt', content: 'svgw: Less setup. More play.' },
+      { name: 'twitter:card', content: 'summary_large_image' },
+      { name: 'twitter:image', content: `${SITE_URL}/og/home.png` },
     ],
     links: [
       { rel: 'preload', href: sansFont, as: 'font', type: 'font/woff2', crossOrigin: 'anonymous' },
