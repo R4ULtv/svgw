@@ -3,6 +3,7 @@ import { ArrowRightIcon, DownloadIcon, TriangleAlertIcon } from 'lucide-react'
 import type { OptimizationResult } from '@/lib/optimize'
 import { formatBytes } from '@/lib/format'
 import { downloadSvg } from '@/lib/svg'
+import { svgForExport, type ExportScope } from '@/lib/svg-export'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useCommandScope } from './commands'
 
 interface ExportDialogProps {
@@ -26,21 +28,34 @@ interface ExportDialogProps {
 type State =
   | { status: 'optimizing' }
   | { status: 'done'; result: OptimizationResult; url: string }
-  | { status: 'error'; message: string }
+  | { status: 'error'; message: string; svg: string | null }
 
 export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogProps) {
   const [state, setState] = useState<State>({ status: 'optimizing' })
+  const [scope, setScope] = useState<ExportScope>('visible')
   useCommandScope('dialog', open)
 
-  // The document cannot change while this modal is open, so one optimization per opening is enough.
+  function changeOpen(next: boolean) {
+    if (!next) {
+      setScope('visible')
+      setState({ status: 'optimizing' })
+    }
+    onOpenChange(next)
+  }
+
+  // The document is locked while this modal is open; changing scope prepares a fresh copy.
   useEffect(() => {
     if (!open) return
     let cancelled = false
     let url = ''
+    let svg: string | null = null
     setState({ status: 'optimizing' })
-    const svg = getSvg()
-    import('@/lib/optimize')
-      .then(({ optimizeSvg }) => optimizeSvg(svg))
+    Promise.resolve()
+      .then(() => {
+        const source = getSvg()
+        svg = svgForExport(source, scope)
+        return import('@/lib/optimize').then(({ optimizeSvg }) => optimizeSvg(svg!))
+      })
       .then((result) => {
         if (cancelled) return
         url = URL.createObjectURL(new Blob([result.svg], { type: 'image/svg+xml' }))
@@ -51,28 +66,57 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
           setState({
             status: 'error',
             message: cause instanceof Error ? cause.message : 'Optimization failed.',
+            svg,
           })
       })
     return () => {
       cancelled = true
       if (url) URL.revokeObjectURL(url)
     }
-    // oxlint-disable-next-line react/exhaustive-deps -- Capture the locked document once per modal opening, regardless of callback identity.
-  }, [open])
+    // oxlint-disable-next-line react/exhaustive-deps -- Capture the locked document per opening/scope, regardless of callback identity.
+  }, [open, scope])
 
   const result = state.status === 'done' ? state.result : null
   const saved = result ? 1 - result.optimizedBytes / result.originalBytes : 0
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Optimized export</DialogTitle>
           <DialogDescription>
-            A smaller copy for the web. IDs, groups, and the viewBox are kept; your editable project
-            is unchanged.
+            Choose which artwork to include. The canvas size stays the same.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="flex flex-col gap-2">
+          <ToggleGroup
+            aria-label="Artwork to export"
+            variant="outline"
+            size="sm"
+            spacing={0}
+            value={[scope]}
+            onValueChange={(values) => {
+              const next = values[0] as ExportScope | undefined
+              if (!next || next === scope) return
+              setState({ status: 'optimizing' })
+              setScope(next)
+            }}
+            className="w-full"
+          >
+            <ToggleGroupItem value="visible" className="flex-1">
+              Visible artwork only
+            </ToggleGroupItem>
+            <ToggleGroupItem value="all" className="flex-1">
+              Entire document
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <p className="text-xs text-muted-foreground">
+            {scope === 'visible'
+              ? 'Hidden layers and objects are excluded. Resources used by visible artwork are kept.'
+              : 'Includes all layers and objects, with their current visibility.'}
+          </p>
+        </div>
 
         <div className="checker flex h-56 items-center justify-center overflow-hidden border p-4">
           {state.status === 'optimizing' && (
@@ -113,7 +157,9 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
           ) : (
             <span className="text-muted-foreground">
               {state.status === 'error'
-                ? 'You can still download the standard SVG.'
+                ? state.svg
+                  ? 'You can still download the standard SVG.'
+                  : 'Show artwork or choose Entire document.'
                 : 'Measuring size…'}
             </span>
           )}
@@ -123,9 +169,11 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
           <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
           {state.status === 'error' ? (
             <Button
+              disabled={!state.svg}
               onClick={() => {
-                downloadSvg(getSvg(), name)
-                onOpenChange(false)
+                if (!state.svg) return
+                downloadSvg(state.svg, scope === 'all' ? `${name || 'untitled'}.full` : name)
+                changeOpen(false)
               }}
             >
               <DownloadIcon data-icon="inline-start" />
@@ -136,8 +184,11 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
               disabled={!result}
               onClick={() => {
                 if (result) {
-                  downloadSvg(result.svg, `${name || 'untitled'}.optimized`)
-                  onOpenChange(false)
+                  downloadSvg(
+                    result.svg,
+                    `${name || 'untitled'}${scope === 'all' ? '.full' : ''}.optimized`,
+                  )
+                  changeOpen(false)
                 }
               }}
             >

@@ -3,6 +3,7 @@ import {
   ChevronDownIcon,
   CopyIcon,
   DownloadIcon,
+  EyeIcon,
   FileIcon,
   FilePlusIcon,
   FileUpIcon,
@@ -60,6 +61,7 @@ interface WorkspaceHeaderProps {
   onLayers: () => void
   onSave: () => void
   onDownload: () => void
+  onDownloadFull: () => void
   onDownloadProject: () => void
   onOptimize: () => void
   onShortcuts: () => void
@@ -84,6 +86,7 @@ export function WorkspaceHeader({
   onLayers,
   onSave,
   onDownload,
+  onDownloadFull,
   onDownloadProject,
   onOptimize,
   onShortcuts,
@@ -332,13 +335,8 @@ export function WorkspaceHeader({
             <ChevronDownIcon className="hidden size-3 opacity-60 sm:block" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuItem onClick={onDownloadProject}>
-              <DownloadIcon />
-              Download project (.json)
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDownload}>
-              <DownloadIcon />
+              <EyeIcon />
               Download SVG
               <Shortcut command="file.download" />
             </DropdownMenuItem>
@@ -346,6 +344,15 @@ export function WorkspaceHeader({
               <SparklesIcon />
               Optimize & download…
               <Shortcut command="file.optimize" />
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onDownloadFull}>
+              <FileIcon />
+              Download full SVG
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onDownloadProject}>
+              <DownloadIcon />
+              Download project (.json)
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

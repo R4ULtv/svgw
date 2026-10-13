@@ -40,6 +40,7 @@ import {
 import { useCloudProjects } from '@/lib/use-cloud-projects'
 import { CloudError } from '@/lib/cloud-api'
 import { blankSvg, downloadSvg, isSvgFile, sampleSvg, sanitizeSvg } from '@/lib/svg'
+import { svgForExport, type ExportScope } from '@/lib/svg-export'
 import {
   alignSelection,
   artworkStats,
@@ -634,6 +635,18 @@ export function Workspace({ projectId }: { projectId: string }) {
       return serializeDocument(engine.current, { forExport })
     }
     return forExport ? exportedSvg(target.svg) : target.svg
+  }
+
+  function downloadArtwork(scope: ExportScope = 'visible') {
+    if (!project) return
+    try {
+      downloadSvg(
+        svgForExport(currentSvg(project, { forExport: true }), scope),
+        scope === 'all' ? `${project.name || 'untitled'}.full` : project.name,
+      )
+    } catch (cause) {
+      toast.error('Could not export SVG', { description: message(cause, 'Try again.') })
+    }
   }
 
   function duplicateProject(target: Project) {

@@ -86,7 +86,7 @@ export const commands = {
     inputs: 'allow',
   },
   'file.download': {
-    title: 'Download SVG',
+    title: 'Download visible SVG',
     group: 'File',
     scope: 'editor',
     binding: keys('Mod+Shift+S'),
