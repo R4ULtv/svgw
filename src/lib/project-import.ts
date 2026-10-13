@@ -1,5 +1,5 @@
 import { promoteLayers } from './layers'
-import { sanitizeSvg } from './svg'
+import { sanitizeSvg } from './sanitize-svg'
 import { inlineStyles } from './svg-import'
 import {
   isProjectFile,

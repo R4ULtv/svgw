@@ -58,11 +58,18 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 /** Follows the operating system's appearance unless the user picks light or dark. */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [preference, setPreferenceState] = useState<ThemePreference>(() =>
-    typeof window === 'undefined' ? 'system' : readPreference(),
-  )
-  const [system, setSystem] = useState<ResolvedTheme>(systemTheme)
+  // Match the prerendered HTML during hydration. The head script already applies
+  // the saved appearance, and we adopt it before any browser paint.
+  const [preference, setPreferenceState] = useState<ThemePreference>('system')
+  const [system, setSystem] = useState<ResolvedTheme>('light')
+  const [ready, setReady] = useState(false)
   const resolved = preference === 'system' ? system : preference
+
+  useLayoutEffect(() => {
+    setPreferenceState(readPreference())
+    setSystem(systemTheme())
+    setReady(true)
+  }, [])
 
   useEffect(() => {
     const query = matchMedia('(prefers-color-scheme: dark)')
@@ -74,7 +81,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // A layout effect applies the class before children's effects run, so anything that reads theme
   // colors in an effect (the rulers) sees the new values.
-  useLayoutEffect(() => apply(resolved), [resolved])
+  useLayoutEffect(() => {
+    if (ready) apply(resolved)
+  }, [resolved, ready])
 
   const setPreference = useCallback((next: ThemePreference) => {
     setPreferenceState(next)

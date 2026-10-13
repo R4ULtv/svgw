@@ -153,6 +153,8 @@ function toNode(element: Element): LayerNode {
   const layer = isLayer(element)
   const children =
     layer || element.localName === 'g' ? drawableChildren(element).reverse().map(toNode) : []
+  let swatch: string | undefined
+  let swatchRead = false
   return {
     key: keyOf(element),
     element,
@@ -161,7 +163,15 @@ function toNode(element: Element): LayerNode {
     tag: element.localName,
     hidden: isHidden(element),
     locked: isLocked(element),
-    swatch: layer || element.localName === 'g' ? undefined : plainFill(element),
+    // Collapsed and virtualized objects need no style read. Cache the swatch only
+    // when a mounted row asks for it; a document revision creates fresh nodes.
+    get swatch() {
+      if (!swatchRead) {
+        swatchRead = true
+        if (!layer && element.localName !== 'g') swatch = plainFill(element)
+      }
+      return swatch
+    },
     children,
   }
 }

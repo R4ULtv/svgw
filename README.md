@@ -141,7 +141,7 @@ Built with React, TypeScript, TanStack Start, Tailwind CSS, and shadcn/ui. SVG-E
 - `src/workers/` — browser SVG optimization.
 - `tests/` — editor, color, and storage API tests.
 
-`src/routeTree.gen.ts` and `worker-configuration.d.ts` are generated files. TanStack Start uses SPA mode; production serves a static app shell with fallback routing for editor links.
+`src/routeTree.gen.ts` and `worker-configuration.d.ts` are generated files. TanStack Start prerenders the homepage and inlines its initial styles. Browser-only routes use a separate static app shell, with fallback rewrites generated during the build.
 
 See [editor performance notes](docs/performance.md) and [landing-page artwork sources](src/components/landing/brand-assets.md) for additional details.
 

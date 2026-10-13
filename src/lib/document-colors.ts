@@ -22,8 +22,11 @@ function declares(element: Element, paint: Paint) {
 /** Every painted fill, stroke, and gradient stop in the document, with its computed color. */
 function paints(content: SVGSVGElement) {
   const found: { element: Element; paint: Paint; color: string }[] = []
+  const colors = new Map<string, string | null>()
   const add = (element: Element, paint: Paint, value: string) => {
-    const color = value && value !== 'none' ? normalizeColor(value) : null
+    if (!value || value === 'none') return
+    if (!colors.has(value)) colors.set(value, normalizeColor(value))
+    const color = colors.get(value)
     if (color) found.push({ element, paint, color })
   }
   const visit = (parent: Element, template: boolean) => {

@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type DragEvent,
+} from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { MinusIcon, PlusIcon, UploadIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -14,6 +23,8 @@ import {
 } from '@/lib/editor'
 import { createAttributePreview } from '@/lib/attribute-preview'
 import { createFrameTask } from '@/lib/frame-task'
+import { loadCanvas } from '@/lib/load-canvas'
+import { createBackgroundTask } from '@/lib/background-task'
 import { installCanvasControls } from '@/lib/canvas-controls'
 import {
   readDocumentColors,
@@ -28,6 +39,7 @@ import {
   createProject,
   getProject,
   listProjects,
+  listProjectSummaries,
   projectRouteId,
   saveProject,
   type Project,
@@ -40,7 +52,8 @@ import {
 } from '@/lib/cloud-types'
 import { useCloudProjects } from '@/lib/use-cloud-projects'
 import { CloudError } from '@/lib/cloud-api'
-import { blankSvg, downloadSvg, isSvgFile, sampleSvg, sanitizeSvg } from '@/lib/svg'
+import { blankSvg, downloadSvg, isSvgFile, sampleSvg } from '@/lib/svg'
+import { sanitizeSvg } from '@/lib/sanitize-svg'
 import { svgForExport, type ExportScope } from '@/lib/svg-export'
 import {
   alignSelection,
@@ -114,7 +127,6 @@ import {
 import { CommandShortcut, useCommandHeld, useCommands, useCommandScope } from './commands'
 import { EditorToolbar } from './editor-toolbar'
 import { CanvasZoomHint, EditorStatusHint } from './editor-status-hint'
-import { ExportDialog } from './export-dialog'
 import { Inspector, type Backdrop } from './inspector'
 import { Logo } from './logo'
 import { LoginButton } from './login-button'
@@ -122,10 +134,19 @@ import { CanvasGuides } from './canvas-guides'
 import { CanvasStarter } from './canvas-starter'
 import { LayersPanel } from './layers-panel'
 import { useTheme } from './theme'
-import { ShortcutsDialog } from './shortcuts-dialog'
 import { ProjectRenameDialog } from './project-rename-dialog'
 import { WorkspaceHeader } from './workspace-header'
-import { ProjectImportDialog, type ImportRequest } from './project-import-dialog'
+import type { ImportRequest } from './project-import-dialog'
+
+const ExportDialog = lazy(() =>
+  import('./export-dialog').then((module) => ({ default: module.ExportDialog })),
+)
+const ShortcutsDialog = lazy(() =>
+  import('./shortcuts-dialog').then((module) => ({ default: module.ShortcutsDialog })),
+)
+const ProjectImportDialog = lazy(() =>
+  import('./project-import-dialog').then((module) => ({ default: module.ProjectImportDialog })),
+)
 
 type SaveState = 'saved' | 'saving' | 'error'
 
@@ -178,8 +199,11 @@ export function Workspace({ projectId }: { projectId: string }) {
   // View updates never invalidate the layer tree; selection updates reuse its document snapshot.
   const [revision, setRevision] = useState(0)
   const [documentRevision, setDocumentRevision] = useState(0)
+  const [layerRevision, setLayerRevision] = useState(0)
   const [selectionRevision, setSelectionRevision] = useState(0)
   const documentRefresh = useRef(false)
+  const appearanceRefresh = useRef(true)
+  const movingSelection = useRef(false)
   const lastSelection = useRef<{ elements: Element[]; layer: Element | null }>({
     elements: [],
     layer: null,
@@ -223,6 +247,21 @@ export function Workspace({ projectId }: { projectId: string }) {
   const localFailure = useRef<string | null>(null)
   const editorRefresh = useRef<ReturnType<typeof createFrameTask> | null>(null)
   if (!editorRefresh.current) editorRefresh.current = createFrameTask(syncEditorState)
+  const colorRefresh = useRef<ReturnType<typeof createBackgroundTask> | null>(null)
+  if (!colorRefresh.current)
+    colorRefresh.current = createBackgroundTask(() => {
+      const editor = engine.current
+      if (!editor) return
+      const colors = readDocumentColors(editor.getSvgContent())
+      setDocumentColors((current) =>
+        current.length === colors.length &&
+        current.every(
+          (item, index) => item.color === colors[index].color && item.uses === colors[index].uses,
+        )
+          ? current
+          : colors,
+      )
+    })
   const attributePreview = useRef<ReturnType<typeof createAttributePreview> | null>(null)
   if (!attributePreview.current)
     attributePreview.current = createAttributePreview({
@@ -396,7 +435,11 @@ export function Workspace({ projectId }: { projectId: string }) {
       setSelectionRevision((value) => value + 1)
     }
     if (selectionChanged || documentRefresh.current) {
-      const next = readSelection(elements, editor.getSvgContent())
+      const next = readSelection(
+        elements,
+        editor.getSvgContent(),
+        !selectionChanged && !appearanceRefresh.current ? selectionStore.getSnapshot() : null,
+      )
       selectionStore.set(next)
       setSelection((current) =>
         current &&
@@ -423,19 +466,15 @@ export function Workspace({ projectId }: { projectId: string }) {
       previous === 'hand' && current === 'select' ? 'hand' : isTool(current) ? current : 'select',
     )
     if (documentRefresh.current) {
-      const colors = readDocumentColors(editor.getSvgContent())
-      setDocumentColors((current) =>
-        current.length === colors.length &&
-        current.every(
-          (item, index) => item.color === colors[index].color && item.uses === colors[index].uses,
-        )
-          ? current
-          : colors,
-      )
+      if (appearanceRefresh.current) {
+        colorRefresh.current!.schedule()
+        setLayerRevision((value) => value + 1)
+      }
       const artwork = hasArtwork(editor.getSvgContent())
       setCanvasEmpty(!artwork)
       if (artwork) setStarterDismissed(true)
       documentRefresh.current = false
+      appearanceRefresh.current = false
       setDocumentRevision((value) => value + 1)
     }
   }
@@ -535,8 +574,9 @@ export function Workspace({ projectId }: { projectId: string }) {
     centerCanvas()
   }
 
-  function documentChanged() {
+  function documentChanged(geometryOnly = false) {
     documentRefresh.current = true
+    if (!geometryOnly) appearanceRefresh.current = true
     refreshEditorState()
     markUnsaved(true)
   }
@@ -575,6 +615,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     setSaveState('saved')
     setSidebarOpen(false)
     documentRefresh.current = true
+    appearanceRefresh.current = true
     refreshEditorState()
   }
 
@@ -709,7 +750,13 @@ export function Workspace({ projectId }: { projectId: string }) {
       active.current = null
       setProject(null)
       setSelection(null)
-      const locals = await listProjects()
+      const summaries = await listProjectSummaries()
+      const candidates = summaries.filter(
+        (item) => item.id === projectId || item.cloud?.id === projectId,
+      )
+      const locals = (await Promise.all(candidates.map((item) => getProject(item.id)))).filter(
+        (item): item is Project => !!item,
+      )
       if (!stillRequested()) return
       const local =
         locals.find((item) => item.cloud?.id === projectId && item.cloud.mode === 'public') ??
@@ -879,7 +926,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     let disposeControls: (() => void) | undefined
     async function initialize() {
       try {
-        const { default: Canvas } = await import('@svgedit/svgcanvas')
+        const { default: Canvas } = await loadCanvas()
         if (cancelled || !host.current) return
         const surface = document.createElement('div')
         host.current.append(surface)
@@ -904,7 +951,7 @@ export function Workspace({ projectId }: { projectId: string }) {
         const addCommand = canvas.undoMgr.addCommandToHistory.bind(canvas.undoMgr)
         canvas.undoMgr.addCommandToHistory = (command) => {
           addCommand(command)
-          if (!cancelled) documentChanged()
+          if (!cancelled) documentChanged(movingSelection.current)
         }
         // Undo/redo can add or remove whole layers, and SVG-Edit doesn't always re-read them: it may
         // keep a removed layer as current, or leave a restored one interactive. Re-detect layers after
@@ -925,8 +972,10 @@ export function Workspace({ projectId }: { projectId: string }) {
         }
         engine.current = canvas
         canvas.bind('changed', (_window: Window, elements?: (Element | null)[]) => {
-          for (const element of elements ?? []) if (element) stripNullAttributes(element)
-          documentChanged()
+          // Nudging changes only transforms, and cannot introduce invalid paint attributes.
+          if (!movingSelection.current)
+            for (const element of elements ?? []) if (element) stripNullAttributes(element)
+          documentChanged(movingSelection.current)
         })
         canvas.bind('selected', () => {
           // Rubber-band selection can reach locked or hidden objects; Illustrator never selects those.
@@ -1206,6 +1255,7 @@ export function Workspace({ projectId }: { projectId: string }) {
       document.removeEventListener('paste', onPaste)
       void flushSave()
       editorRefresh.current!.cancel()
+      colorRefresh.current!.cancel()
       zoomUpdate.current!.cancel()
       pendingZoom.current = null
       disposeControls?.()
@@ -1327,7 +1377,12 @@ export function Workspace({ projectId }: { projectId: string }) {
 
   function nudge(dx: number, dy: number) {
     commitAttribute()
-    engine.current?.moveSelectedElements(dx, dy, true)
+    movingSelection.current = true
+    try {
+      engine.current?.moveSelectedElements(dx, dy, true)
+    } finally {
+      movingSelection.current = false
+    }
   }
 
   function focusFirst(selector: string) {
@@ -1452,7 +1507,7 @@ export function Workspace({ projectId }: { projectId: string }) {
   const sidebar = project ? (
     <LayersPanel
       editor={engine.current}
-      documentRevision={documentRevision}
+      documentRevision={layerRevision}
       selectionRevision={selectionRevision}
       onChange={onLayerChange}
       onSelect={refreshEditorState}
@@ -1551,11 +1606,15 @@ export function Workspace({ projectId }: { projectId: string }) {
           void importFiles(files, { asProjects: importAsProjects.current })
         }}
       />
-      <ProjectImportDialog
-        request={importRequest}
-        onClose={() => setImportRequest(null)}
-        onImport={importDocuments}
-      />
+      {importRequest && (
+        <Suspense fallback={null}>
+          <ProjectImportDialog
+            request={importRequest}
+            onClose={() => setImportRequest(null)}
+            onImport={importDocuments}
+          />
+        </Suspense>
+      )}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[15rem_minmax(0,1fr)] lg:grid-cols-[15rem_minmax(0,1fr)_16rem]">
         <aside
@@ -1734,15 +1793,21 @@ export function Workspace({ projectId }: { projectId: string }) {
         onRename={rename}
       />
 
-      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      {shortcutsOpen && (
+        <Suspense fallback={null}>
+          <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+        </Suspense>
+      )}
 
-      {project && (
-        <ExportDialog
-          open={exporting}
-          onOpenChange={setExporting}
-          name={project.name}
-          getSvg={() => currentSvg(project, { forExport: true })}
-        />
+      {project && exporting && (
+        <Suspense fallback={null}>
+          <ExportDialog
+            open={exporting}
+            onOpenChange={setExporting}
+            name={project.name}
+            getSvg={() => currentSvg(project, { forExport: true })}
+          />
+        </Suspense>
       )}
 
       <AlertDialog

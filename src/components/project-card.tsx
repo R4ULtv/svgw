@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   CloudIcon,
   CloudUploadIcon,
@@ -60,14 +60,39 @@ export function ProjectCard({
   actions: ProjectActions
 }) {
   const svg = project.local?.svg
-  const thumbnail = useMemo(
-    () =>
-      svg === undefined ? null : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
-    [svg],
-  )
+  const card = useRef<HTMLLIElement>(null)
+  const [visible, setVisible] = useState(false)
+  const [thumbnail, setThumbnail] = useState<string | null>(null)
+  useEffect(() => {
+    const element = card.current
+    if (!element) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        setVisible(true)
+        observer.disconnect()
+      },
+      { rootMargin: '300px' },
+    )
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => {
+    if (!visible || svg === undefined) {
+      setThumbnail(null)
+      return
+    }
+    // Blob URLs avoid URI-encoding and duplicating large SVGs in every card's DOM.
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
+    setThumbnail(url)
+    return () => URL.revokeObjectURL(url)
+  }, [svg, visible])
   const name = project.name || 'Untitled'
   return (
-    <li className="relative">
+    <li
+      ref={card}
+      className="relative [content-visibility:auto] [contain-intrinsic-size:auto_250px]"
+    >
       <Link
         to="/project/$id"
         params={{ id: project.id }}
@@ -75,7 +100,13 @@ export function ProjectCard({
       >
         <div className="checker relative flex h-44 items-center justify-center overflow-hidden border-b">
           {thumbnail ? (
-            <img src={thumbnail} alt="" loading="lazy" className="size-full object-contain p-6" />
+            <img
+              src={thumbnail}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="size-full object-contain p-6"
+            />
           ) : (
             <FileImageIcon className="size-10 text-muted-foreground/50" />
           )}

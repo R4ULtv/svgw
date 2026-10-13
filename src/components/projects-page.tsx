@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CloudIcon,
   FileImageIcon,
@@ -36,7 +36,7 @@ import {
 import { blankSvg, downloadSvg, sampleSvg } from '@/lib/svg'
 import { PROJECT_ACCEPT, type ImportedDocument } from '@/lib/project-import'
 import { ProjectCard, type ProjectActions } from './project-card'
-import { ProjectImportDialog, type ImportRequest } from './project-import-dialog'
+import type { ImportRequest } from './project-import-dialog'
 import { useCommands, useCommandScope } from './commands'
 import { ProjectRenameDialog } from './project-rename-dialog'
 import { LoginButton } from './login-button'
@@ -56,6 +56,10 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Spinner } from './ui/spinner'
 import { VersionHistoryDialog } from './version-history-dialog'
+
+const ProjectImportDialog = lazy(() =>
+  import('./project-import-dialog').then((module) => ({ default: module.ProjectImportDialog })),
+)
 
 type PendingDelete =
   /** `online`: the project is also saved online, so only this device's copy goes. */
@@ -459,10 +463,19 @@ export function ProjectsPage() {
   })
 
   // One entry per project, whether it is on this device, online, or both.
-  const allProjects = projectLibrary(locals, session.admin ? remotes : [], session.admin)
-  const query = search.trim().toLocaleLowerCase()
-  const matches = (project: ProjectEntry) =>
-    (project.name || 'Untitled').toLocaleLowerCase().includes(query)
+  const allProjects = useMemo(
+    () => projectLibrary(locals, session.admin ? remotes : [], session.admin),
+    [locals, remotes, session.admin],
+  )
+  const deferredSearch = useDeferredValue(search)
+  const query = deferredSearch.trim().toLocaleLowerCase()
+  const matches = useMemo(
+    () =>
+      allProjects.filter((project) =>
+        (project.name || 'Untitled').toLocaleLowerCase().includes(query),
+      ),
+    [allProjects, query],
+  )
   const busy = creating || !session.authReady
   const loading = localLoading || remoteLoading
 
@@ -554,7 +567,7 @@ export function ProjectsPage() {
         </div>
 
         <ProjectSection
-          projects={allProjects.filter(matches)}
+          projects={matches}
           total={allProjects.length}
           loading={loading}
           errors={[localError, remoteError]}
@@ -595,11 +608,15 @@ export function ProjectsPage() {
           if (files.length) setImportRequest({ files, asProjects: true })
         }}
       />
-      <ProjectImportDialog
-        request={importRequest}
-        onClose={() => setImportRequest(null)}
-        onImport={(documents) => create({ documents })}
-      />
+      {importRequest && (
+        <Suspense fallback={null}>
+          <ProjectImportDialog
+            request={importRequest}
+            onClose={() => setImportRequest(null)}
+            onImport={(documents) => create({ documents })}
+          />
+        </Suspense>
+      )}
       <ProjectRenameDialog
         open={Boolean(renaming)}
         onOpenChange={(open) => {

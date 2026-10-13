@@ -1,21 +1,21 @@
 import type { RemoteProject } from './cloud-types'
-import { projectRouteId, type Project } from './projects'
+import { projectRouteId, type Project, type ProjectSummary } from './projects'
 
-export interface ProjectEntry {
+export interface ProjectEntry<Local extends ProjectSummary = Project> {
   /** The canonical project URL, shared by its saved version and browser copy. */
   id: string
   name: string
   updatedAt: number
-  local?: Project
+  local?: Local
   remote?: RemoteProject
 }
 
-export function projectLibrary(
-  locals: Project[],
+export function projectLibrary<Local extends ProjectSummary>(
+  locals: Local[],
   remotes: RemoteProject[],
   loggedIn: boolean,
-): ProjectEntry[] {
-  const copies = new Map<string, Project>()
+): ProjectEntry<Local>[] {
+  const copies = new Map<string, Local>()
   const mode = loggedIn ? 'admin' : 'public'
   for (const project of locals) {
     const id = projectRouteId(project)
@@ -30,7 +30,7 @@ export function projectLibrary(
       copies.set(id, project)
   }
 
-  const entries = new Map<string, ProjectEntry>()
+  const entries = new Map<string, ProjectEntry<Local>>()
   for (const local of copies.values())
     entries.set(projectRouteId(local), {
       id: projectRouteId(local),

@@ -46,7 +46,7 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
   // The document is locked while this modal is open; changing scope prepares a fresh copy.
   useEffect(() => {
     if (!open) return
-    let cancelled = false
+    const controller = new AbortController()
     let url = ''
     let svg: string | null = null
     setState({ status: 'optimizing' })
@@ -54,15 +54,17 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
       .then(() => {
         const source = getSvg()
         svg = svgForExport(source, scope)
-        return import('@/lib/optimize').then(({ optimizeSvg }) => optimizeSvg(svg!))
+        return import('@/lib/optimize').then(({ optimizeSvg }) =>
+          optimizeSvg(svg!, { signal: controller.signal }),
+        )
       })
       .then((result) => {
-        if (cancelled) return
+        if (controller.signal.aborted) return
         url = URL.createObjectURL(new Blob([result.svg], { type: 'image/svg+xml' }))
         setState({ status: 'done', result, url })
       })
       .catch((cause: unknown) => {
-        if (!cancelled)
+        if (!controller.signal.aborted)
           setState({
             status: 'error',
             message: cause instanceof Error ? cause.message : 'Optimization failed.',
@@ -70,7 +72,7 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
           })
       })
     return () => {
-      cancelled = true
+      controller.abort()
       if (url) URL.revokeObjectURL(url)
     }
     // oxlint-disable-next-line react/exhaustive-deps -- Capture the locked document per opening/scope, regardless of callback identity.

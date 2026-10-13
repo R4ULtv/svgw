@@ -155,6 +155,33 @@ function summary(manifest: Manifest, admin: boolean): RemoteProject {
   }
 }
 
+/** Store both authorized projections atomically with the manifest, avoiding N+1 reads. */
+function listingMetadata(manifest: Manifest): Record<string, string> {
+  const listing = JSON.stringify({
+    admin: manifest.deleted ? null : summary(manifest, true),
+    public:
+      !manifest.deleted && manifest.visibility === 'public' && manifest.publishedVersionId
+        ? summary(manifest, false)
+        : null,
+  })
+  // Unusual escaped names can exceed R2's metadata limit; those retain the body-read path.
+  return new TextEncoder().encode(listing).byteLength <= 1900 ? { listing } : {}
+}
+
+function listedProject(object: R2Object, admin: boolean): RemoteProject | null | undefined {
+  const listing = object.customMetadata?.listing
+  if (!listing) return undefined
+  try {
+    const projections = JSON.parse(listing) as {
+      admin?: RemoteProject | null
+      public?: RemoteProject | null
+    }
+    return admin ? projections.admin : projections.public
+  } catch {
+    return undefined
+  }
+}
+
 function checkRevision(request: Request, revision: string) {
   const expected = request.headers.get('If-Match')
   if (!expected) throw new HttpError(428, 'A project revision is required.')
@@ -169,6 +196,7 @@ async function commit(bucket: R2Bucket, manifest: Manifest, revision: string) {
   const saved = await bucket.put(manifestKey(manifest.id), JSON.stringify(manifest), {
     onlyIf: new Headers({ 'If-Match': revision }),
     httpMetadata: { contentType: 'application/json' },
+    customMetadata: listingMetadata(manifest),
   })
   if (!saved)
     throw new HttpError(
@@ -249,24 +277,29 @@ async function api(request: Request, env: Env, context: ExecutionContext) {
   if (url.pathname === '/api/projects') {
     if (request.method === 'GET') {
       const cursor = url.searchParams.get('cursor') ?? undefined
-      const page = await bucket.list({ prefix: 'projects/', limit: 100, cursor })
+      const page = await bucket.list({
+        prefix: 'projects/',
+        limit: 100,
+        cursor,
+        include: ['customMetadata'],
+      })
       const projects: RemoteProject[] = []
       // Bound the number of simultaneous R2 operations.
       for (let start = 0; start < page.objects.length; start += 5) {
-        const manifests = await Promise.all(
+        const listings = await Promise.all(
           page.objects.slice(start, start + 5).map(async (object) => {
+            const cached = listedProject(object, admin)
+            if (cached !== undefined) return cached
             const result = await bucket.get(object.key)
-            return result ? result.json<Manifest>() : null
+            const manifest = result ? await result.json<Manifest>() : null
+            return manifest &&
+              !manifest.deleted &&
+              (admin || (manifest.visibility === 'public' && manifest.publishedVersionId))
+              ? summary(manifest, admin)
+              : null
           }),
         )
-        for (const manifest of manifests) {
-          if (
-            manifest &&
-            !manifest.deleted &&
-            (admin || (manifest.visibility === 'public' && manifest.publishedVersionId))
-          )
-            projects.push(summary(manifest, admin))
-        }
+        for (const project of listings) if (project) projects.push(project)
       }
       return json({ projects, cursor: page.truncated ? page.cursor : null })
     }
@@ -306,6 +339,7 @@ async function api(request: Request, env: Env, context: ExecutionContext) {
       const saved = await bucket.put(manifestKey(id), JSON.stringify(manifest), {
         onlyIf: { etagDoesNotMatch: '*' },
         httpMetadata: { contentType: 'application/json' },
+        customMetadata: listingMetadata(manifest),
       })
       if (!saved) throw new HttpError(409, 'This project ID already exists.')
       return json({ project: summary(manifest, true), revision: saved.httpEtag }, 201)

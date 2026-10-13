@@ -7,7 +7,7 @@ import {
   type RemoteMutation,
 } from './cloud-types'
 import { createProject, newId, type Project } from './projects'
-import { sanitizeSvg } from './svg'
+import { sanitizeSvg } from './sanitize-svg'
 
 /** A local project's link after a change to its online project. Content stays as it was saved. */
 export function linkAfter(link: CloudLink, result: RemoteMutation): CloudLink {

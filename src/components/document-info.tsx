@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { SparklesIcon } from 'lucide-react'
 import { formatBytes } from '@/lib/format'
 import type { ArtworkStats } from '@/lib/layers'
+import { createBackgroundTask } from '@/lib/background-task'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -35,25 +36,27 @@ export function DocumentInfo({ revision, read, onOptimize }: DocumentInfoProps) 
 
   useEffect(() => {
     if (!visible) return
-    let cancelled = false
+    const controller = new AbortController()
     // Let edits settle first: serializing and optimizing a large document takes a moment.
-    const timer = window.setTimeout(() => {
+    const task = createBackgroundTask(() => {
       const current = read()
       if (!current) return
       setInfo({ bytes: new Blob([current.svg]).size, stats: current.stats })
       setOptimized({ status: 'measuring' })
       import('@/lib/optimize')
-        .then(({ optimizeSvg }) => optimizeSvg(current.svg))
+        .then(({ optimizeSvg }) => optimizeSvg(current.svg, { signal: controller.signal }))
         .then((result) => {
-          if (!cancelled) setOptimized({ status: 'done', bytes: result.optimizedBytes })
+          if (!controller.signal.aborted)
+            setOptimized({ status: 'done', bytes: result.optimizedBytes })
         })
         .catch(() => {
-          if (!cancelled) setOptimized({ status: 'error' })
+          if (!controller.signal.aborted) setOptimized({ status: 'error' })
         })
     }, 400)
+    task.schedule()
     return () => {
-      cancelled = true
-      window.clearTimeout(timer)
+      controller.abort()
+      task.cancel()
     }
     // oxlint-disable-next-line react/exhaustive-deps -- `read` reads the live editor; the revision says when it changed.
   }, [revision, visible])

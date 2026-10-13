@@ -190,7 +190,11 @@ function rotationOf(element: Element) {
   return 0
 }
 
-export function readSelection(elements: Element[], content: SVGSVGElement): Selection | null {
+export function readSelection(
+  elements: Element[],
+  content: SVGSVGElement,
+  appearance?: Selection | null,
+): Selection | null {
   if (!elements.length) return null
   const first = elements[0]
   const bounds = artworkBounds(
@@ -201,18 +205,23 @@ export function readSelection(elements: Element[], content: SVGSVGElement): Sele
     { stroke: false },
   )
   const rotated = elements.length === 1 ? rotatedSize(first) : null
-  const targets = paintTargets(elements, 'stroke')
+  const targets = appearance ? [] : paintTargets(elements, 'stroke')
   // Read each style once, before any DOM writes, and stop comparing paint once it is mixed.
-  let fill: string | undefined
-  let stroke: string | undefined
-  let strokeWidth = 0
-  let strokeDetails = { strokeLinecap: 'butt', strokeLinejoin: 'miter', strokeDasharray: 'none' }
+  let fill = appearance?.fill
+  let stroke = appearance?.stroke
+  let strokeWidth = appearance?.strokeWidth ?? 0
+  let strokeDetails = {
+    strokeLinecap: appearance?.strokeLinecap ?? 'butt',
+    strokeLinejoin: appearance?.strokeLinejoin ?? 'miter',
+    strokeDasharray: appearance?.strokeDasharray ?? 'none',
+  }
   const colors = new Map<string, string>()
   const paintColor = (value: string) => {
     if (!colors.has(value)) colors.set(value, normalizeColor(value) ?? 'none')
     return colors.get(value)!
   }
-  if (!targets.length) strokeWidth = parseFloat(getComputedStyle(first).strokeWidth) || 0
+  if (!appearance && !targets.length)
+    strokeWidth = parseFloat(getComputedStyle(first).strokeWidth) || 0
   for (const [index, element] of targets.entries()) {
     const style = getComputedStyle(element)
     if (index === 0) {
@@ -256,7 +265,13 @@ export function readSelection(elements: Element[], content: SVGSVGElement): Sele
     radius: styleTargets(elements, 'rect').length
       ? Number(first.getAttribute('rx') ?? first.getAttribute('ry') ?? 0) || 0
       : null,
-    ...readFont(styleTargets(elements, 'text')[0]),
+    ...(appearance
+      ? {
+          fontFamily: appearance.fontFamily,
+          fontSize: appearance.fontSize,
+          fontWeight: appearance.fontWeight,
+        }
+      : readFont(styleTargets(elements, 'text')[0])),
   }
 }
 

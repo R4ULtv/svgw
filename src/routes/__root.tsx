@@ -6,7 +6,8 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { ThemeProvider, themeScript } from '@/components/theme'
 import { CommandProvider } from '@/components/commands'
 import { AdminSessionProvider } from '@/lib/admin-session'
-import styles from '../styles.css?url'
+import '../styles.css'
+import sansFont from '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2?url'
 
 export const Route = createRootRoute({
   head: () => ({
@@ -17,7 +18,7 @@ export const Route = createRootRoute({
       { name: 'description', content: 'Edit, save, and optimize SVGs in your browser.' },
     ],
     links: [
-      { rel: 'stylesheet', href: styles },
+      { rel: 'preload', href: sansFont, as: 'font', type: 'font/woff2', crossOrigin: 'anonymous' },
       {
         rel: 'icon',
         type: 'image/x-icon',

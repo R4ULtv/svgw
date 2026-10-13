@@ -1,18 +1,23 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useHydrated, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowRightIcon, FileImageIcon, FolderOpenIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAdminSession } from '@/lib/admin-session'
 import { cloudApi, CloudError } from '@/lib/cloud-api'
 import type { RemoteProject } from '@/lib/cloud-types'
-import { createProject, listProjects, saveProject, type Project } from '@/lib/projects'
+import {
+  createProject,
+  listProjectSummaries,
+  saveProject,
+  type ProjectSummary,
+} from '@/lib/projects'
 import { projectLibrary } from '@/lib/project-library'
-import { blankSvg, isSvgFile, sampleSvg, sanitizeSvg } from '@/lib/svg'
+import { blankSvg, isSvgFile, sampleSvg } from '@/lib/svg'
 import { useCommands } from '@/components/commands'
 import { designs, LandingPage, type LandingDesign } from '@/components/landing/landing-page'
 
 export const Route = createFileRoute('/')({
-  ssr: false,
+  ssr: true,
   validateSearch: (search: Record<string, unknown>): { design?: LandingDesign } => ({
     design:
       typeof search.design === 'string' && designs.includes(search.design as LandingDesign)
@@ -25,10 +30,13 @@ export const Route = createFileRoute('/')({
 // All three concepts share the existing project lifecycle and canonical editor routes.
 function Home() {
   const navigate = useNavigate()
+  const hydrated = useHydrated()
   const { design: selectedDesign } = Route.useSearch()
-  const design = selectedDesign ?? 'playground'
+  // Static HTML uses the default design for every URL. Adopt preview parameters
+  // after hydration so opening a review link never discards the prerendered DOM.
+  const design = (hydrated ? selectedDesign : undefined) ?? 'playground'
   const session = useAdminSession()
-  const [locals, setLocals] = useState<Project[]>([])
+  const [locals, setLocals] = useState<ProjectSummary[]>([])
   const [remotes, setRemotes] = useState<RemoteProject[]>([])
   const [localError, setLocalError] = useState<string | null>(null)
   const [remoteError, setRemoteError] = useState<string | null>(null)
@@ -39,7 +47,7 @@ function Home() {
     const legacyId = new URL(window.location.href).searchParams.get('project')
     if (legacyId) void navigate({ to: '/project/$id', params: { id: legacyId }, replace: true })
     let cancelled = false
-    void listProjects()
+    void listProjectSummaries()
       .then((projects) => {
         if (!cancelled) setLocals(projects)
       })
@@ -111,6 +119,7 @@ function Home() {
     try {
       if (!isSvgFile(file)) throw new Error('Choose an SVG file to open.')
       if (file.size > 8 * 1024 * 1024) throw new Error('Choose an SVG smaller than 8 MiB.')
+      const { sanitizeSvg } = await import('@/lib/sanitize-svg')
       const svg = sanitizeSvg(await file.text())
       await create(svg, file.name.replace(/\.svg$/i, '') || 'Imported SVG')
     } catch (cause) {
@@ -196,7 +205,7 @@ function Home() {
   return (
     <LandingPage
       design={design}
-      showDesignSwitcher={selectedDesign !== undefined}
+      showDesignSwitcher={hydrated && selectedDesign !== undefined}
       onDesignChange={(next) =>
         void navigate({ to: '/', search: { design: next }, hash: '', resetScroll: true }).then(() =>
           window.scrollTo(0, 0),

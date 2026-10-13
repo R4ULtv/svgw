@@ -1,13 +1,13 @@
 import { optimize } from 'svgo/browser'
 
 const worker = self as unknown as {
-  onmessage: ((event: MessageEvent<string>) => void) | null
-  postMessage: (value: { svg: string } | { error: string }) => void
+  onmessage: ((event: MessageEvent<{ id: number; svg: string }>) => void) | null
+  postMessage: (value: { id: number; svg: string } | { id: number; error: string }) => void
 }
 
 worker.onmessage = (event) => {
   try {
-    const result = optimize(event.data, {
+    const result = optimize(event.data.svg, {
       multipass: true,
       floatPrecision: 4,
       plugins: [
@@ -24,8 +24,11 @@ worker.onmessage = (event) => {
         },
       ],
     })
-    worker.postMessage({ svg: result.data })
+    worker.postMessage({ id: event.data.id, svg: result.data })
   } catch (error) {
-    worker.postMessage({ error: error instanceof Error ? error.message : 'Optimization failed.' })
+    worker.postMessage({
+      id: event.data.id,
+      error: error instanceof Error ? error.message : 'Optimization failed.',
+    })
   }
 }
