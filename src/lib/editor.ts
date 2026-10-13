@@ -18,6 +18,13 @@ export type SvgEditor = Omit<
   | 'contentH'
 > & {
   setSvgOption(name: 'round_digits', value: number): void
+  /** Cached client-to-editing-context matrix used throughout a pointer gesture. */
+  setRootSctm(matrix: DOMMatrix): void
+  getContainer(): HTMLElement
+  getMouseTarget(event: MouseEvent): Element
+  getRubberBox(): SVGGraphicsElement | null
+  getIntersectionList(rect?: { x: number; y: number; width: number; height: number }): Element[]
+  clearSelection(noCall?: boolean): void
   getSelectedElements(): (Element | null)[]
   addToSelection(elements: Element[], showGrips?: boolean): void
   removeFromSelection(elements: Element[]): void

@@ -26,6 +26,7 @@ import { createFrameTask } from '@/lib/frame-task'
 import { loadCanvas } from '@/lib/load-canvas'
 import { createBackgroundTask } from '@/lib/background-task'
 import { installCanvasControls } from '@/lib/canvas-controls'
+import { installCanvasInteractions } from '@/lib/canvas-interactions'
 import {
   readDocumentColors,
   startColorReplacement,
@@ -593,6 +594,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     const editor = engine.current
     if (!editor) return
     commitAttribute()
+    editor.leaveContext()
     void flushSave()
     // Promote Illustrator/Inkscape layers before sanitizing, which drops Inkscape's namespaced attributes.
     if (!editor.setSvgString(sanitizeSvg(promoteLayers(next.svg)), true))
@@ -924,6 +926,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     let cancelled = false
     let canvas: SvgEditor | undefined
     let disposeControls: (() => void) | undefined
+    let disposeInteractions: (() => void) | undefined
     async function initialize() {
       try {
         const { default: Canvas } = await loadCanvas()
@@ -946,6 +949,7 @@ export function Workspace({ projectId }: { projectId: string }) {
         container = surface
         addCheckerPattern(canvas.getSvgRoot())
         disposeControls = installCanvasControls(canvas)
+        disposeInteractions = installCanvasInteractions(canvas, refreshEditorState)
         // SVG-Edit records some edits (dragging objects, for one) without emitting 'changed', which
         // left them unsaved. Editor state synchronization coalesces all notifications per frame.
         const addCommand = canvas.undoMgr.addCommandToHistory.bind(canvas.undoMgr)
@@ -1259,6 +1263,7 @@ export function Workspace({ projectId }: { projectId: string }) {
       zoomUpdate.current!.cancel()
       pendingZoom.current = null
       disposeControls?.()
+      disposeInteractions?.()
       if (canvas) {
         // The engine has no public destroy method; release host listeners and event callbacks.
         canvas.bind('changed', () => {})
