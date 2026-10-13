@@ -36,6 +36,7 @@ import {
   isLayerExpanded,
   layerRows,
   layerRowWindow,
+  layerSelectionRange,
   LAYER_ROW_HEIGHT,
   type LayerRow,
 } from '@/lib/layer-rows'
@@ -51,7 +52,9 @@ import {
   layerOf,
   moveElements,
   rename,
+  restoreArtworkState,
   selectInLayers,
+  setArtworkState,
   setHidden,
   setLocked,
   type DropTarget,
@@ -116,6 +119,8 @@ export const LayersPanel = memo(function LayersPanel({
   // Hidden or empty layers stay collapsed. Explicit choices survive visibility changes and edits.
   const [expansion, setExpansion] = useState<Map<string, boolean>>(() => new Map())
   const previousSelection = useRef<Set<Element>>(new Set())
+  const selectionAnchor = useRef<Element | null>(null)
+  const panelSelection = useRef<Set<Element> | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [dragging, setDragging] = useState<Element[]>([])
   const [drop, setDrop] = useState<{ key: string; position: DropPosition } | null>(null)
@@ -141,6 +146,10 @@ export const LayersPanel = memo(function LayersPanel({
   }, [selected, documentRevision])
   const deleteBinding = useBinding('selection.delete')
   const centerBinding = useBinding('selection.center')
+  const hideBinding = useBinding('selection.hide')
+  const lockBinding = useBinding('selection.lock')
+  const showAllBinding = useBinding('layers.showAll')
+  const unlockAllBinding = useBinding('layers.unlockAll')
   const undoBinding = useBinding('edit.undo')
   const redoBinding = useBinding('edit.redo')
 
@@ -219,6 +228,8 @@ export const LayersPanel = memo(function LayersPanel({
   useEffect(() => {
     const previous = previousSelection.current
     previousSelection.current = selected
+    if (selectionAnchor.current && !selected.has(selectionAnchor.current))
+      selectionAnchor.current = null
     if (
       !selected.size ||
       (previous.size === selected.size && [...selected].every((element) => previous.has(element)))
@@ -244,6 +255,14 @@ export const LayersPanel = memo(function LayersPanel({
   }, [selected])
 
   useEffect(() => {
+    // Panel clicks already target a visible row; keep its scroll position while selecting a range.
+    const fromPanel = panelSelection.current
+    if (
+      fromPanel?.size === selected.size &&
+      [...selected].every((element) => fromPanel.has(element))
+    )
+      return
+    panelSelection.current = null
     if (selected.size) revealRow(rows.findIndex((row) => selected.has(row.node.element)))
   }, [rows, selected])
 
@@ -258,6 +277,8 @@ export const LayersPanel = memo(function LayersPanel({
   function activate(node: LayerNode, event: MouseEvent | KeyboardEvent) {
     if (!editor) return
     if (node.kind === 'layer') {
+      selectionAnchor.current = null
+      panelSelection.current = null
       act(
         () => {
           editor.leaveContext()
@@ -268,19 +289,37 @@ export const LayersPanel = memo(function LayersPanel({
       return
     }
     if (isBlocked(node.element)) return
-    const additive = event.shiftKey || event.metaKey || event.ctrlKey
-    if (additive && selected.has(node.element))
-      act(() => editor.removeFromSelection([node.element]), { mutates: false })
-    else
+    const additive = event.metaKey || event.ctrlKey
+    // Read the engine directly because its scheduled React refresh may lag behind rapid clicks.
+    const selection = editor
+      .getSelectedElements()
+      .filter((element): element is Element => !!element)
+    if (event.shiftKey) {
+      const anchor =
+        selectionAnchor.current ??
+        rows.find((row) => selection.includes(row.node.element))?.node.element ??
+        node.element
+      selectionAnchor.current = anchor
+      act(() => selectInLayers(editor, layerSelectionRange(rows, anchor, node.element), additive), {
+        mutates: false,
+      })
+    } else {
+      selectionAnchor.current = node.element
       act(
         () =>
-          selectInLayers(
-            editor,
-            [node.element],
-            additive && layerOf(node.element) === currentLayer,
-          ),
+          additive && selection.includes(node.element)
+            ? selectInLayers(
+                editor,
+                selection.filter((element) => element !== node.element),
+                false,
+              )
+            : selectInLayers(editor, [node.element], additive),
         { mutates: false },
       )
+    }
+    panelSelection.current = new Set(
+      editor.getSelectedElements().filter((element): element is Element => !!element),
+    )
   }
 
   function deleteLayer(node: LayerNode) {
@@ -398,6 +437,24 @@ export const LayersPanel = memo(function LayersPanel({
       if (node.kind === 'layer') deleteLayer(node)
       else if (selected.has(node.element)) act(() => editor!.deleteSelectedElements())
       else deleteObject(node)
+    } else if (matches(hideBinding) || matches(lockBinding)) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.repeat) return
+      const selection = editor!
+        .getSelectedElements()
+        .filter((element): element is Element => !!element)
+      const elements = selection.length ? selection : [node.element]
+      if (setArtworkState(editor!, elements, matches(hideBinding) ? 'hidden' : 'locked', true))
+        onChange()
+    } else if (matches(showAllBinding) || matches(unlockAllBinding)) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (
+        !event.repeat &&
+        restoreArtworkState(editor!, matches(showAllBinding) ? 'hidden' : 'locked')
+      )
+        onChange()
     } else if (matches(centerBinding) && selected.size) {
       event.preventDefault()
       event.stopPropagation()
@@ -598,12 +655,14 @@ export const LayersPanel = memo(function LayersPanel({
             >
               {node.hidden ? <EyeIcon /> : <EyeOffIcon />}
               {node.hidden ? 'Show' : 'Hide'}
+              {!node.hidden && <CommandShortcut command="selection.hide" className="ml-auto" />}
             </ContextMenuItem>
             <ContextMenuItem
               onClick={() => act(() => setLocked(editor!, node.element, !node.locked))}
             >
               {node.locked ? <LockOpenIcon /> : <LockIcon />}
               {node.locked ? 'Unlock' : 'Lock'}
+              {!node.locked && <CommandShortcut command="selection.lock" className="ml-auto" />}
             </ContextMenuItem>
             {node.kind !== 'layer' && otherLayers.length > 0 && (
               <ContextMenuSub>
@@ -722,6 +781,7 @@ export const LayersPanel = memo(function LayersPanel({
         ref={treeRef}
         role="tree"
         aria-label="Layers"
+        aria-multiselectable="true"
         tabIndex={0}
         onKeyDown={onTreeKeyDown}
         onFocus={(event) => {

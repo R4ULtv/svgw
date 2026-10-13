@@ -300,22 +300,21 @@ function changeAttributes(
   return new editor.history.ChangeElementCommand(element, old, label)
 }
 
+function hiddenAttributes(element: Element, hidden: boolean) {
+  const style = (element.getAttribute('style') ?? '')
+    .replace(/(^|;)\s*display\s*:[^;]*/g, '')
+    .replace(/^;+/, '')
+    .trim()
+  return { display: hidden ? 'none' : null, style: style || null }
+}
+
 export function setHidden(editor: SvgEditor, element: Element, hidden: boolean) {
   if (isLayer(element)) {
     editor.setLayerVisibility(layerName(element), !hidden)
     return
   }
-  const style = (element.getAttribute('style') ?? '')
-    .replace(/(^|;)\s*display\s*:[^;]*/g, '')
-    .replace(/^;+/, '')
-    .trim()
   editor.undoMgr.addCommandToHistory(
-    changeAttributes(
-      editor,
-      element,
-      { display: hidden ? 'none' : null, style: style || null },
-      hidden ? 'Hide' : 'Show',
-    ),
+    changeAttributes(editor, element, hiddenAttributes(element, hidden), hidden ? 'Hide' : 'Show'),
   )
   if (hidden)
     editor.removeFromSelection(
@@ -340,6 +339,58 @@ export function setLocked(editor: SvgEditor, element: Element, locked: boolean) 
         .getSelectedElements()
         .filter((item): item is Element => !!item && (item === element || element.contains(item))),
     )
+}
+
+export type ArtworkState = 'hidden' | 'locked'
+
+/** Change the entire selection as one undo step, preserving each element's previous state. */
+export function setArtworkState(
+  editor: SvgEditor,
+  elements: Element[],
+  state: ArtworkState,
+  enabled: boolean,
+) {
+  const test = state === 'hidden' ? isHidden : isLocked
+  const changing = [...new Set(elements)].filter((element) => test(element) !== enabled)
+  if (!changing.length) return false
+  const label = state === 'hidden' ? (enabled ? 'Hide' : 'Show') : enabled ? 'Lock' : 'Unlock'
+  const batch = new editor.history.BatchCommand(label)
+  for (const element of changing)
+    batch.addSubCommand(
+      changeAttributes(
+        editor,
+        element,
+        state === 'hidden'
+          ? hiddenAttributes(element, enabled)
+          : { [LOCK]: enabled ? 'true' : null },
+        label,
+      ),
+    )
+  if (enabled) {
+    const affected = new Set(changing)
+    editor.removeFromSelection(
+      editor.getSelectedElements().filter((element): element is Element => {
+        for (let node = element; node; node = node.parentElement)
+          if (affected.has(node)) return true
+        return false
+      }),
+    )
+  }
+  editor.undoMgr.addCommandToHistory(batch)
+  return true
+}
+
+/** Restore layers, groups, and objects, including collapsed branches, without touching definitions. */
+export function restoreArtworkState(editor: SvgEditor, state: ArtworkState) {
+  const elements: Element[] = []
+  const visit = (nodes: LayerNode[]) => {
+    for (const node of nodes) {
+      elements.push(node.element)
+      visit(node.children)
+    }
+  }
+  visit(buildLayerTree(editor))
+  return setArtworkState(editor, elements, state, false)
 }
 
 /** Unique "Layer N" name, like Illustrator's default naming. */
@@ -448,17 +499,36 @@ function compensatingTransform(element: Element, from: Element, to: Element) {
   return `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.e} ${m.f})`
 }
 
-/** Makes `elements` the selection, switching to their layer and entering their group like a canvas double-click. */
+/** Select artwork across layers; enter a group only when the whole selection shares it. */
 export function selectInLayers(editor: SvgEditor, elements: Element[], additive: boolean) {
-  const first = elements[0]
-  const layer = first && layerOf(first)
-  if (!layer || elements.some(isBlocked)) return
+  if (elements.some(isBlocked)) return
+  const candidates = new Set([
+    ...(additive
+      ? editor.getSelectedElements().filter((element): element is Element => !!element)
+      : []),
+    ...elements,
+  ])
+  // A selected group already includes its descendants; selecting both would edit them twice.
+  const selection = [...candidates].filter((element) => {
+    for (let parent = element.parentElement; parent; parent = parent.parentElement)
+      if (candidates.has(parent)) return false
+    return true
+  })
+  const first = selection[0]
+  if (!first) {
+    editor.clearSelection()
+    return
+  }
+  const layer = layerOf(first)
+  if (!layer) return
+  // Context and layer changes clear the engine's selection, so restore the complete snapshot.
   if (editor.getCurrentGroup()) editor.leaveContext()
   if (editor.getCurrentDrawing().getCurrentLayer() !== layer)
     editor.setCurrentLayer(layerName(layer))
-  if (first.parentElement !== layer && first.parentElement) editor.setContext(first.parentElement)
-  if (additive) editor.addToSelection(elements, true)
-  else editor.selectOnly(elements, true)
+  const parent = first.parentElement
+  if (parent && parent !== layer && selection.every((element) => element.parentElement === parent))
+    editor.setContext(parent)
+  editor.selectOnly(selection, true)
 }
 
 export interface Bounds {

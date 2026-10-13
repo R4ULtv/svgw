@@ -134,6 +134,18 @@ export const commands = {
     scope: 'selection',
     binding: keys('Backspace', 'Delete'),
   },
+  'selection.hide': {
+    title: 'Hide selection',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Mod+[Digit3]'),
+  },
+  'selection.lock': {
+    title: 'Lock selection',
+    group: 'Selection',
+    scope: 'selection',
+    binding: keys('Mod+[Digit2]'),
+  },
   'selection.center': {
     title: 'Center selection on artboard',
     group: 'Selection',
@@ -251,6 +263,18 @@ export const commands = {
     group: 'Layers',
     scope: 'editor',
     binding: keys('Mod+Shift+L'),
+  },
+  'layers.showAll': {
+    title: 'Show all artwork',
+    group: 'Layers',
+    scope: 'editor',
+    binding: keys('Mod+Alt+[Digit3]'),
+  },
+  'layers.unlockAll': {
+    title: 'Unlock all artwork',
+    group: 'Layers',
+    scope: 'editor',
+    binding: keys('Mod+Alt+[Digit2]'),
   },
 
   'view.rulers': {

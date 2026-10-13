@@ -69,9 +69,12 @@ import {
   layerName,
   layerOf,
   promoteLayers,
+  restoreArtworkState,
+  setArtworkState,
   setSelectionBounds,
   setSelectionRotation,
   type Alignment,
+  type ArtworkState,
   type Bounds,
 } from '@/lib/layers'
 import {
@@ -856,6 +859,20 @@ export function Workspace({ projectId }: { projectId: string }) {
     if (engine.current) centerSelectionOnArtboard(engine.current)
   }
 
+  function changeArtworkState(state: ArtworkState, restore = false) {
+    commitAttribute()
+    const editor = engine.current
+    if (!editor) return
+    if (restore) restoreArtworkState(editor, state)
+    else
+      setArtworkState(
+        editor,
+        editor.getSelectedElements().filter((element): element is Element => !!element),
+        state,
+        true,
+      )
+  }
+
   function changeSelectionBounds(next: Bounds) {
     commitAttribute()
     return engine.current ? setSelectionBounds(engine.current, next) : false
@@ -1440,6 +1457,8 @@ export function Workspace({ projectId }: { projectId: string }) {
       else engine.current?.clearSelection()
     },
     'selection.delete': () => engine.current?.deleteSelectedElements(),
+    'selection.hide': () => changeArtworkState('hidden'),
+    'selection.lock': () => changeArtworkState('locked'),
     'selection.center': centerSelection,
     'selection.alignLeft': () => align('left'),
     'selection.alignCenter': () => align('center'),
@@ -1466,6 +1485,8 @@ export function Workspace({ projectId }: { projectId: string }) {
       createLayer(engine.current)
       documentChanged()
     },
+    'layers.showAll': () => changeArtworkState('hidden', true),
+    'layers.unlockAll': () => changeArtworkState('locked', true),
     'navigate.layers': showLayers,
     'view.zoomIn': () => stepZoom(1),
     'view.zoomOut': () => stepZoom(-1),

@@ -1,4 +1,4 @@
-import type { LayerNode } from './layers'
+import { isBlocked, type LayerNode } from './layers'
 
 export const LAYER_ROW_HEIGHT = 32
 export interface LayerRow {
@@ -39,6 +39,17 @@ export function layerRows(tree: LayerNode[], expansion: ReadonlyMap<string, bool
   }
   visit(tree, 0, false, false)
   return rows
+}
+
+/** Select artwork in panel order, including unmounted rows but excluding collapsed branches. */
+export function layerSelectionRange(rows: LayerRow[], anchor: Element | null, target: Element) {
+  const end = rows.findIndex((row) => row.node.element === target)
+  if (end < 0) return []
+  const start = rows.findIndex((row) => row.node.element === anchor)
+  return rows
+    .slice(Math.min(start < 0 ? end : start, end), Math.max(start, end) + 1)
+    .filter((row) => row.node.kind !== 'layer' && !isBlocked(row.node.element))
+    .map((row) => row.node.element)
 }
 
 /** A bounded number of mounted rows, regardless of document size. */
