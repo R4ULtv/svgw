@@ -240,6 +240,144 @@
   fill: #1c1917;
 }
 
+/* Canvas tools use the UI's warm ink. A halo keeps the selection outline legible over artwork of
+   the same tone, and the palette inverts on dark artboard backdrops independently of the app
+   theme. Artwork and exports never inherit these styles. */
+.svg-host {
+  --canvas-control-accent: #2b2422;
+  --canvas-control-surface: #fff;
+  --canvas-control-halo: rgb(255 255 255 / 0.9);
+}
+.svg-host[data-backdrop='dark'],
+.svg-host[data-backdrop='checker-dark'] {
+  --canvas-control-accent: #f5f5f4;
+  --canvas-control-surface: #292524;
+  --canvas-control-halo: rgb(28 25 23 / 0.75);
+}
+.svg-host #selectorParentGroup [id^='selectedBox'] {
+  stroke: var(--canvas-control-accent);
+  stroke-width: 1.25;
+  stroke-dasharray: none;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 0.75px var(--canvas-control-halo))
+    drop-shadow(0 0 0.75px var(--canvas-control-halo));
+}
+.svg-host #selectorParentGroup [id^='selectorGrip_resize_'] {
+  /* Small painted grips sit inside generous invisible targets. */
+  r: 12px;
+  fill: url(#svgw-control-corner);
+  stroke: none;
+  pointer-events: all;
+}
+.svg-host #selectorParentGroup [id^='selectorGrip_resize_']:hover,
+.svg-host #selectorParentGroup [id^='selectorGrip_resize_']:active {
+  fill: url(#svgw-control-corner-active);
+}
+.svg-host #selectorParentGroup #selectorGrip_resize_n,
+.svg-host #selectorParentGroup #selectorGrip_resize_s {
+  fill: url(#svgw-control-edge-x);
+}
+.svg-host #selectorParentGroup #selectorGrip_resize_n:hover,
+.svg-host #selectorParentGroup #selectorGrip_resize_n:active,
+.svg-host #selectorParentGroup #selectorGrip_resize_s:hover,
+.svg-host #selectorParentGroup #selectorGrip_resize_s:active {
+  fill: url(#svgw-control-edge-x-active);
+}
+.svg-host #selectorParentGroup #selectorGrip_resize_e,
+.svg-host #selectorParentGroup #selectorGrip_resize_w {
+  fill: url(#svgw-control-edge-y);
+}
+.svg-host #selectorParentGroup #selectorGrip_resize_e:hover,
+.svg-host #selectorParentGroup #selectorGrip_resize_e:active,
+.svg-host #selectorParentGroup #selectorGrip_resize_w:hover,
+.svg-host #selectorParentGroup #selectorGrip_resize_w:active {
+  fill: url(#svgw-control-edge-y-active);
+}
+.svg-host #selectorParentGroup[data-compact-x='true'] #selectorGrip_resize_n,
+.svg-host #selectorParentGroup[data-compact-x='true'] #selectorGrip_resize_s,
+.svg-host #selectorParentGroup[data-compact-y='true'] #selectorGrip_resize_e,
+.svg-host #selectorParentGroup[data-compact-y='true'] #selectorGrip_resize_w {
+  display: none;
+}
+.svg-host #selectorGrip_rotateconnector {
+  stroke: var(--canvas-control-accent);
+  stroke-width: 1;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  transform: scaleY(1.4);
+}
+.svg-host #selectorGrip_rotate {
+  /* Clears the top edge handle's target so the two never compete for the pointer. */
+  r: 14px;
+  fill: url(#svgw-control-rotate);
+  stroke: none;
+  pointer-events: all;
+  transform: translateY(-8px);
+  /* CSS has no rotate cursor; a native one matches the other canvas cursors better than
+     SVG-Edit's inline image cursor. */
+  cursor: grab !important;
+}
+.svg-host #selectorGrip_rotate:hover,
+.svg-host #selectorGrip_rotate:active {
+  fill: url(#svgw-control-rotate-active);
+}
+.svg-host #selectorGrip_rotate:active {
+  cursor: grabbing !important;
+}
+.svg-host #selectorRubberBand {
+  fill: var(--canvas-control-accent);
+  fill-opacity: 0.06;
+  stroke: var(--canvas-control-accent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.svg-host #svgw-selection-info rect {
+  fill: var(--canvas-control-accent);
+  filter: url(#svgw-control-shadow);
+}
+.svg-host #svgw-selection-info text {
+  fill: var(--canvas-control-surface);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+}
+
+/* Path nodes share the square grips; round handles distinguish Bezier control points. SVG-Edit
+   marks selected nodes with a cyan stroke attribute, which we translate into a filled state. */
+.svg-host #pathpointgrip_container [id^='pathpointgrip_'] {
+  r: 12px;
+  fill: url(#svgw-control-corner);
+  stroke: none;
+}
+.svg-host #pathpointgrip_container [id^='pathpointgrip_'][stroke='#0FF'],
+.svg-host #pathpointgrip_container [id^='pathpointgrip_']:hover {
+  fill: url(#svgw-control-corner-active);
+}
+.svg-host #pathpointgrip_container [id^='ctrlpointgrip_'] {
+  r: 4px;
+  fill: var(--canvas-control-surface);
+  stroke: var(--canvas-control-accent);
+  stroke-width: 1;
+}
+.svg-host #pathpointgrip_container [id^='ctrlpointgrip_'][fill='#0FF'],
+.svg-host #pathpointgrip_container [id^='ctrlpointgrip_']:hover {
+  fill: var(--canvas-control-accent);
+}
+.svg-host #pathpointgrip_container [id^='ctrlLine_'] {
+  stroke: var(--canvas-control-accent);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+.svg-host #path_stretch_line {
+  stroke: var(--canvas-control-accent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
 /* Held-key preview: hide SVG-Edit's selection box, grips, and path handles. */
 .svg-host[data-previewing] #selectorParentGroup,
 .svg-host[data-previewing] #pathpointgrip_container {

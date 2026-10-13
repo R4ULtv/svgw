@@ -14,6 +14,7 @@ import {
 } from '@/lib/editor'
 import { createAttributePreview } from '@/lib/attribute-preview'
 import { createFrameTask } from '@/lib/frame-task'
+import { installCanvasControls } from '@/lib/canvas-controls'
 import {
   readDocumentColors,
   startColorReplacement,
@@ -875,6 +876,7 @@ export function Workspace({ projectId }: { projectId: string }) {
   useEffect(() => {
     let cancelled = false
     let canvas: SvgEditor | undefined
+    let disposeControls: (() => void) | undefined
     async function initialize() {
       try {
         const { default: Canvas } = await import('@svgedit/svgcanvas')
@@ -889,7 +891,6 @@ export function Workspace({ projectId }: { projectId: string }) {
           initStroke: { color: 'none', width: 1, opacity: 1 },
           initOpacity: 1,
           text: { font_size: 24, font_family: 'sans-serif', stroke_width: 0 },
-          selectionColor: '#3b82f6',
           // Artwork past the artboard stays visible on the pasteboard, as in Illustrator.
           show_outside_canvas: true,
           selectNew: true,
@@ -897,6 +898,7 @@ export function Workspace({ projectId }: { projectId: string }) {
         canvas.setSvgOption('round_digits', 5)
         container = surface
         addCheckerPattern(canvas.getSvgRoot())
+        disposeControls = installCanvasControls(canvas)
         // SVG-Edit records some edits (dragging objects, for one) without emitting 'changed', which
         // left them unsaved. Editor state synchronization coalesces all notifications per frame.
         const addCommand = canvas.undoMgr.addCommandToHistory.bind(canvas.undoMgr)
@@ -1206,6 +1208,7 @@ export function Workspace({ projectId }: { projectId: string }) {
       editorRefresh.current!.cancel()
       zoomUpdate.current!.cancel()
       pendingZoom.current = null
+      disposeControls?.()
       if (canvas) {
         // The engine has no public destroy method; release host listeners and event callbacks.
         canvas.bind('changed', () => {})
