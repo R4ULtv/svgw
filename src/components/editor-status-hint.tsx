@@ -82,6 +82,16 @@ export function EditorStatusHint({
       </>,
       backToSelect,
     ]
+  } else if (mode === 'resize') {
+    hints = [
+      'Drag a corner to resize proportionally',
+      <>
+        Hold <Kbd>Shift</Kbd> for free corner resizing
+      </>,
+      <>
+        Hold <Kbd>{detectPlatform() === 'mac' ? '⌘' : 'Ctrl'}</Kbd> to resize from the center
+      </>,
+    ]
   } else if (tool === 'rect') {
     hints = [
       'Drag to draw a rectangle',
@@ -110,6 +120,13 @@ export function EditorStatusHint({
       <span key="selection" className="inline-block max-w-48 truncate align-middle">
         {selectionLabel} selected
       </span>,
+      'Drag a corner to resize proportionally',
+      <>
+        Hold <Kbd>Shift</Kbd> for free corner resizing
+      </>,
+      <>
+        Hold <Kbd>{detectPlatform() === 'mac' ? '⌘' : 'Ctrl'}</Kbd> to resize from the center
+      </>,
       boundNudges.length ? (
         <>
           <span className="inline-flex items-center gap-1 align-middle">

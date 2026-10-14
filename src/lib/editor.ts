@@ -21,6 +21,8 @@ export type SvgEditor = Omit<
   /** Cached client-to-editing-context matrix used throughout a pointer gesture. */
   setRootSctm(matrix: DOMMatrix): void
   getContainer(): HTMLElement
+  mouseMoveEvent(event: MouseEvent): void
+  getCurrentResizeMode(): string
   getMouseTarget(event: MouseEvent): Element
   getRubberBox(): SVGGraphicsElement | null
   getIntersectionList(rect?: { x: number; y: number; width: number; height: number }): Element[]

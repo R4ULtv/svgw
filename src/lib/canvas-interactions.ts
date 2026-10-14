@@ -1,5 +1,6 @@
 import type { SvgEditor } from './editor'
 import { createMarqueeSelection } from './canvas-marquee'
+import { installCanvasResize } from './canvas-resize'
 import { layerName, layerOf } from './layers'
 
 /** Keep SVG-Edit's pointer coordinates and temporary modes in sync with the workspace. */
@@ -9,6 +10,7 @@ export function installCanvasInteractions(editor: SvgEditor, refresh: () => void
   const selection = createMarqueeSelection(editor)
   editor.getIntersectionList = selection.intersections
   const surface = editor.getContainer()
+  const disposeResize = installCanvasResize(editor)
   let marquee = false
   let boxed: Element[] | null = null
   const press = (event: MouseEvent) => {
@@ -62,6 +64,7 @@ export function installCanvasInteractions(editor: SvgEditor, refresh: () => void
   }
   surface.addEventListener('mouseup', release)
   return () => {
+    disposeResize()
     surface.removeEventListener('mousedown', press, true)
     surface.removeEventListener('mouseup', beforeRelease, true)
     surface.removeEventListener('mouseup', release)
