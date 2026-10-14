@@ -10,7 +10,14 @@ import {
 import { LockIcon, LockOpenIcon, Trash2Icon, XIcon } from 'lucide-react'
 import type { SvgEditor } from '@/lib/editor'
 import { createFrameTask } from '@/lib/frame-task'
-import { rulerSteps, type Axis, type Guides } from '@/lib/guides'
+import {
+  guideHitAreas,
+  pointOnArtboard,
+  rulerSteps,
+  type Axis,
+  type Guides,
+  type GuideView as View,
+} from '@/lib/guides'
 import { cn } from '@/lib/utils'
 import {
   ContextMenu,
@@ -24,16 +31,6 @@ import { useTheme } from './theme'
 /** Ruler thickness in CSS pixels. */
 export const RULER = 20
 
-interface View {
-  /** Artboard origin relative to the overlay, in CSS pixels. */
-  ox: number
-  oy: number
-  /** CSS pixels per document unit. */
-  scale: number
-  width: number
-  height: number
-}
-
 interface Drag {
   axis: Axis
   /** Index of the guide being moved, or null while creating one from a ruler. */
@@ -44,6 +41,8 @@ interface Drag {
   py: number
   /** Released here, the guide is deleted (or not created). */
   removing: boolean
+  /** Guide placement is allowed only on the pasteboard outside the artboard. */
+  onArtboard: boolean
 }
 
 interface DragHandlers {
@@ -72,7 +71,8 @@ interface CanvasGuidesProps {
 
 /**
  * Rulers along the top and left of the canvas area and guides across it, as in Illustrator:
- * drag from a ruler to create a guide, drag a guide to move it, and drop it on a ruler to delete it.
+ * add and move guides on the pasteboard outside the artboard; drop on a ruler to delete.
+ * Guide lines across the artboard stay visible without intercepting artwork interactions.
  */
 export function CanvasGuides({
   editor,
@@ -131,7 +131,7 @@ export function CanvasGuides({
   function pointerState(
     axis: Axis,
     event: PointerEvent,
-  ): Pick<Drag, 'value' | 'px' | 'py' | 'removing'> {
+  ): Pick<Drag, 'value' | 'px' | 'py' | 'removing' | 'onArtboard'> {
     const rect = overlay.current!.getBoundingClientRect()
     const px = event.clientX - rect.left
     const py = event.clientY - rect.top
@@ -139,7 +139,13 @@ export function CanvasGuides({
     // Vertical guides go back to the left ruler, horizontal ones to the top ruler, or anywhere off the canvas area.
     const offCanvas = px < 0 || py < 0 || px > rect.width || py > rect.height
     const onRuler = showRulers && (axis === 'x' ? px < RULER : py < RULER)
-    return { value: Math.round(value), px, py, removing: offCanvas || onRuler }
+    return {
+      value: Math.round(value),
+      px,
+      py,
+      removing: offCanvas || onRuler,
+      onArtboard: !!view && pointOnArtboard(view, size, px, py),
+    }
   }
 
   function dragHandlers(axis: Axis, index: number | null): DragHandlers {
@@ -157,7 +163,11 @@ export function CanvasGuides({
       },
       onPointerUp: (event: PointerEvent) => {
         if (!drag || drag.axis !== axis || drag.index !== index) return
-        const { value, removing } = pointerState(axis, event)
+        const { value, removing, onArtboard } = pointerState(axis, event)
+        if (onArtboard && !removing) {
+          setDrag(null)
+          return
+        }
         const next: Guides = { x: [...guides.x], y: [...guides.y] }
         if (index !== null) next[axis].splice(index, 1)
         if (!removing) next[axis].push(value)
@@ -194,14 +204,8 @@ export function CanvasGuides({
                     aria-label={`${axis === 'x' ? 'Vertical' : 'Horizontal'} guide at ${value}`}
                     {...dragHandlers(axis, index)}
                     className={cn(
-                      'group/guide absolute flex touch-none select-none justify-center',
+                      'group/guide pointer-events-none absolute flex touch-none select-none justify-center',
                       axis === 'x' ? 'inset-y-0 w-[7px] flex-row' : 'inset-x-0 h-[7px] flex-col',
-                      locked
-                        ? 'pointer-events-none'
-                        : cn(
-                            'pointer-events-auto',
-                            axis === 'x' ? 'cursor-col-resize' : 'cursor-row-resize',
-                          ),
                     )}
                     // The 7px hit area is offset by 3px so its center pixel is the guide's pixel.
                     style={
@@ -212,6 +216,24 @@ export function CanvasGuides({
                   />
                 }
               >
+                {!locked &&
+                  view &&
+                  guideHitAreas(axis, position(axis, value), view, size).map((area, hit) => (
+                    <span
+                      key={hit}
+                      data-guide-hit-area
+                      className={cn(
+                        'pointer-events-auto absolute',
+                        axis === 'x' ? 'cursor-col-resize' : 'cursor-row-resize',
+                      )}
+                      style={{
+                        left: area.left - (axis === 'x' ? position(axis, value) - 3 : 0),
+                        top: area.top - (axis === 'y' ? position(axis, value) - 3 : 0),
+                        width: area.width,
+                        height: area.height,
+                      }}
+                    />
+                  ))}
                 {/* Keep the capture target mounted until release; only hide its original line. */}
                 <span
                   className={cn(
@@ -273,7 +295,7 @@ export function CanvasGuides({
           <span
             className={cn(
               'absolute',
-              drag.removing ? 'opacity-40' : '',
+              (drag.removing || drag.onArtboard) && 'opacity-40',
               drag.axis === 'x' ? 'inset-y-0 w-px' : 'inset-x-0 h-px',
               'bg-cyan-500 dark:bg-cyan-400',
             )}
@@ -291,7 +313,9 @@ export function CanvasGuides({
               ? drag.index === null
                 ? 'Release to cancel'
                 : 'Release to delete'
-              : `${drag.axis === 'x' ? 'X' : 'Y'} ${drag.value}`}
+              : drag.onArtboard
+                ? 'Release outside the artboard'
+                : `${drag.axis === 'x' ? 'X' : 'Y'} ${drag.value}`}
           </span>
         </>
       )}
@@ -406,8 +430,8 @@ function Ruler({
       ref={canvas}
       aria-label={
         axis === 'x'
-          ? 'Horizontal ruler. Drag down to add a horizontal guide.'
-          : 'Vertical ruler. Drag right to add a vertical guide.'
+          ? 'Horizontal ruler. Drag onto the pasteboard outside the artboard to add a horizontal guide.'
+          : 'Vertical ruler. Drag onto the pasteboard outside the artboard to add a vertical guide.'
       }
       {...handlers}
       className={cn(

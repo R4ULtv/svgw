@@ -10,6 +10,59 @@ export interface Guides {
 
 export type Axis = keyof Guides
 
+export interface GuideView {
+  /** Artboard origin relative to the guide overlay, in CSS pixels. */
+  ox: number
+  oy: number
+  /** CSS pixels per document unit. */
+  scale: number
+  width: number
+  height: number
+}
+
+export function pointOnArtboard(
+  view: GuideView,
+  size: { w: number; h: number },
+  x: number,
+  y: number,
+) {
+  return (
+    x >= view.ox &&
+    x < view.ox + size.w * view.scale &&
+    y >= view.oy &&
+    y < view.oy + size.h * view.scale
+  )
+}
+
+/** The guide's 7px hit strip, clipped to the visible pasteboard outside the artboard. */
+export function guideHitAreas(
+  axis: Axis,
+  position: number,
+  view: GuideView,
+  size: { w: number; h: number },
+) {
+  const left = axis === 'x' ? Math.max(0, position - 3) : 0
+  const right = axis === 'x' ? Math.min(view.width, position + 4) : view.width
+  const top = axis === 'y' ? Math.max(0, position - 3) : 0
+  const bottom = axis === 'y' ? Math.min(view.height, position + 4) : view.height
+  const blockedLeft = Math.max(left, view.ox)
+  const blockedRight = Math.min(right, view.ox + size.w * view.scale)
+  const blockedTop = Math.max(top, view.oy)
+  const blockedBottom = Math.min(bottom, view.oy + size.h * view.scale)
+  const rectangles =
+    blockedLeft >= blockedRight || blockedTop >= blockedBottom
+      ? [[left, top, right, bottom]]
+      : [
+          [left, top, blockedLeft, bottom],
+          [blockedRight, top, right, bottom],
+          [blockedLeft, top, blockedRight, blockedTop],
+          [blockedLeft, blockedBottom, blockedRight, bottom],
+        ]
+  return rectangles
+    .filter(([x1, y1, x2, y2]) => x2 > x1 && y2 > y1)
+    .map(([x1, y1, x2, y2]) => ({ left: x1, top: y1, width: x2 - x1, height: y2 - y1 }))
+}
+
 export const noGuides: Guides = { x: [], y: [] }
 
 /** Snap distance in screen pixels, converted to document units by the caller's scale. */
