@@ -260,6 +260,11 @@
   stroke-width: 1.25;
   stroke-dasharray: none;
   vector-effect: non-scaling-stroke;
+}
+
+/* One halo surface for the node overlay, rather than one filter per path segment. */
+.svg-host #selectorParentGroup [id^='selectedBox'],
+.svg-host #pathpointgrip_container {
   filter: drop-shadow(0 0 0.75px var(--canvas-control-halo))
     drop-shadow(0 0 0.75px var(--canvas-control-halo));
 }
@@ -353,14 +358,14 @@
    cyan attributes encode selection state; only our warm control palette is painted. */
 .svg-host #pathpointgrip_container [id^='pathpointgrip_'] {
   r: 12px;
-  fill: url(#svgw-control-corner);
+  fill: url(#svgw-control-path-node);
   stroke: none;
   pointer-events: all;
 }
 .svg-host #pathpointgrip_container [id^='pathpointgrip_'][stroke='#0FF'],
 .svg-host #pathpointgrip_container [id^='pathpointgrip_']:hover,
 .svg-host #pathpointgrip_container [id^='pathpointgrip_']:active {
-  fill: url(#svgw-control-corner-active);
+  fill: url(#svgw-control-path-node-active);
 }
 .svg-host #pathpointgrip_container [id^='ctrlpointgrip_'] {
   r: 12px;
@@ -378,8 +383,6 @@
   stroke-width: 1;
   opacity: 0.6;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 0.75px var(--canvas-control-halo))
-    drop-shadow(0 0 0.75px var(--canvas-control-halo));
 }
 .svg-host #path_stretch_line {
   stroke: var(--canvas-control-accent);

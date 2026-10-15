@@ -351,6 +351,7 @@ function Ruler({
   const canvas = useRef<HTMLCanvasElement>(null)
   const { resolved } = useTheme()
   const [bounds, setBounds] = useState({ width: 0, height: 0 })
+  const palette = useRef<{ theme: typeof resolved; color: string; background: string } | null>(null)
 
   // Redraw when the ruler itself resizes, not only when the view moves.
   useEffect(() => {
@@ -368,14 +369,22 @@ function Ruler({
     const context = element?.getContext('2d')
     if (!element || !context) return
     const ratio = window.devicePixelRatio || 1
-    const { width, height } = element.getBoundingClientRect()
-    element.width = Math.round(width * ratio)
-    element.height = Math.round(height * ratio)
+    const { width, height } = bounds
+    if (!width || !height) return
+    // Reuse the backing store while panning; resetting it reallocates both rulers every frame.
+    const pixelWidth = Math.round(width * ratio)
+    const pixelHeight = Math.round(height * ratio)
+    if (element.width !== pixelWidth) element.width = pixelWidth
+    if (element.height !== pixelHeight) element.height = pixelHeight
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
     context.clearRect(0, 0, width, height)
 
-    const style = getComputedStyle(element)
-    const root = getComputedStyle(document.documentElement)
+    if (!palette.current || palette.current.theme !== resolved)
+      palette.current = {
+        theme: resolved,
+        color: getComputedStyle(element).color,
+        background: getComputedStyle(document.documentElement).getPropertyValue('--background'),
+      }
     const horizontal = axis === 'x'
     const span = horizontal ? width : height
     const thickness = horizontal ? height : width
@@ -383,13 +392,13 @@ function Ruler({
     const origin = (horizontal ? view.ox : view.oy) - RULER
 
     // The artboard's extent reads lighter, like Illustrator's ruler.
-    context.fillStyle = root.getPropertyValue('--background')
+    context.fillStyle = palette.current.background
     if (horizontal) context.fillRect(origin, 0, length * view.scale, thickness)
     else context.fillRect(0, origin, thickness, length * view.scale)
 
     const { major, minor } = rulerSteps(view.scale)
-    context.strokeStyle = style.color
-    context.fillStyle = style.color
+    context.strokeStyle = palette.current.color
+    context.fillStyle = palette.current.color
     context.lineWidth = 1
     context.font = '9px ui-sans-serif, system-ui, sans-serif'
     context.textBaseline = 'top'

@@ -28,7 +28,14 @@ function addControlPatterns(root: SVGSVGElement) {
   // Filled controls need the opposite-color border to remain visible over matching artwork.
   // The surface/accent colors swap together when the artboard backdrop is dark.
   for (const active of [false, true]) {
-    for (const kind of ['corner', 'edge-x', 'edge-y', 'rotate', 'path-handle'] as const) {
+    for (const kind of [
+      'corner',
+      'edge-x',
+      'edge-y',
+      'rotate',
+      'path-node',
+      'path-handle',
+    ] as const) {
       const size = kind === 'rotate' ? 28 : 24
       const center = size / 2
       const pattern = svg('pattern', {
@@ -69,7 +76,6 @@ function addControlPatterns(root: SVGSVGElement) {
             fill: active ? 'var(--canvas-control-accent)' : 'var(--canvas-control-surface)',
             stroke: active ? 'var(--canvas-control-surface)' : 'var(--canvas-control-accent)',
             'stroke-width': active ? 1.5 : 1.25,
-            filter: 'url(#svgw-control-shadow)',
           }),
         )
       } else {
@@ -81,11 +87,11 @@ function addControlPatterns(root: SVGSVGElement) {
             y: center - height / 2,
             width,
             height,
-            rx: kind === 'corner' ? 2 : 2.5,
+            rx: kind === 'corner' || kind === 'path-node' ? 2 : 2.5,
             fill: active ? 'var(--canvas-control-accent)' : 'var(--canvas-control-surface)',
             stroke: active ? 'var(--canvas-control-surface)' : 'var(--canvas-control-accent)',
             'stroke-width': active ? 1.5 : 1.25,
-            filter: 'url(#svgw-control-shadow)',
+            ...(kind === 'path-node' ? {} : { filter: 'url(#svgw-control-shadow)' }),
           }),
         )
       }

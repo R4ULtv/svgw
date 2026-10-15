@@ -137,6 +137,7 @@ import { Inspector, type Backdrop } from './inspector'
 import { Logo } from './logo'
 import { LoginButton } from './login-button'
 import { CanvasGuides } from './canvas-guides'
+import { installPointerFrames } from '@/lib/pointer-frames'
 import { CanvasStarter } from './canvas-starter'
 import { LayersPanel } from './layers-panel'
 import { useTheme } from './theme'
@@ -1087,8 +1088,6 @@ export function Workspace({ projectId }: { projectId: string }) {
     } | null = null
     const toDocument = (editor: SvgEditor, x: number, y: number) =>
       new DOMPoint(x, y).matrixTransform(editor.getSvgContent().getScreenCTM()!.inverse())
-    const toClient = (editor: SvgEditor, x: number, y: number) =>
-      new DOMPoint(x, y).matrixTransform(editor.getSvgContent().getScreenCTM()!)
     const DRAW_MODES = new Set(['rect', 'square', 'ellipse', 'circle', 'line', 'path', 'pathedit'])
 
     function redispatch(event: MouseEvent, x: number, y: number) {
@@ -1126,12 +1125,14 @@ export function Workspace({ projectId }: { projectId: string }) {
           return
         }
       }
-      const scale = editor.getSvgContent().getScreenCTM()?.a || 1
+      const matrix = editor.getSvgContent().getScreenCTM()
+      if (!matrix) return
+      const scale = Math.hypot(matrix.a, matrix.b) || 1
       const lines = snapLines(
         viewRef.current.guides ? guidesRef.current : noGuides,
         sizeRef.current,
       )
-      const pointer = toDocument(editor, event.clientX, event.clientY)
+      const pointer = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
       const result =
         snapping.kind === 'move' && snapping.box
           ? snapBox(pointer, snapping.start, snapping.box, lines, SNAP_DISTANCE / scale)
@@ -1140,15 +1141,15 @@ export function Workspace({ projectId }: { projectId: string }) {
         current.x === result.lines.x && current.y === result.lines.y ? current : result.lines,
       )
       if (result.x === pointer.x && result.y === pointer.y) return
-      const client = toClient(editor, result.x, result.y)
+      const client = new DOMPoint(result.x, result.y).matrixTransform(matrix)
       redispatch(event, client.x, client.y)
     }
 
     function snapPress(event: MouseEvent) {
+      if (synthetic.has(event)) return
       snapping = null
       const editor = engine.current
       if (
-        synthetic.has(event) ||
         !editor ||
         event.button !== 0 ||
         !viewRef.current.snap ||
@@ -1298,6 +1299,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     }
 
     const surface = host.current
+    const disposePointerFrames = surface ? installPointerFrames(surface) : undefined
     surface?.addEventListener('mousedown', panStart, true)
     window.addEventListener('mousemove', panMove, true)
     window.addEventListener('mouseup', panEnd, true)
@@ -1316,6 +1318,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     document.addEventListener('visibilitychange', flushOnHide)
     return () => {
       cancelled = true
+      disposePointerFrames?.()
       document.removeEventListener('visibilitychange', flushOnHide)
       surface?.removeEventListener('mousedown', switchLayerOnPress, true)
       surface?.removeEventListener('mousedown', panStart, true)

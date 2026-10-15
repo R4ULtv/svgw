@@ -1,5 +1,6 @@
 import type { EditablePath, SvgEditor } from './editor'
 import { isBlocked, layerName, layerOf } from './layers'
+import { batchPathSegments } from './path-segment-batch'
 
 export type PathAction = 'add' | 'delete' | 'line' | 'curve'
 export interface PathEditingState {
@@ -44,7 +45,10 @@ export function installPathEditing(editor: SvgEditor, refresh: () => void) {
   const pointFromGrip = editor.getPointFromGrip
   const recalcRotatedPath = editor.recalcRotatedPath
   const getSvgString = editor.getSvgString
-  const patched = new Map<EditablePath, EditablePath['update']>()
+  const patched = new Map<
+    EditablePath,
+    { update: EditablePath['update']; movePts: EditablePath['movePts'] }
+  >()
   let marquee: {
     path: EditablePath
     start: Point
@@ -133,7 +137,9 @@ export function installPathEditing(editor: SvgEditor, refresh: () => void) {
     const path = getPath.call(editor, element)
     if (!patched.has(path)) {
       const update = path.update
-      patched.set(path, update)
+      const movePts = path.movePts
+      patched.set(path, { update, movePts })
+      path.movePts = (dx, dy) => batchPathSegments(path.elem, () => movePts.call(path, dx, dy))
       path.update = () => {
         update.call(path)
         if (editor.getMode() === 'pathedit') {
@@ -330,7 +336,10 @@ export function installPathEditing(editor: SvgEditor, refresh: () => void) {
       editor.getPointFromGrip = pointFromGrip
       editor.recalcRotatedPath = recalcRotatedPath
       editor.getSvgString = getSvgString
-      for (const [path, update] of patched) path.update = update
+      for (const [path, original] of patched) {
+        path.update = original.update
+        path.movePts = original.movePts
+      }
     },
   }
 }
