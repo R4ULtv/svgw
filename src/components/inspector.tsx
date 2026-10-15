@@ -277,7 +277,7 @@ function CanvasSize({
   onResize,
   onFitToArtwork,
 }: Pick<InspectorProps, 'size' | 'onResize' | 'onFitToArtwork'>) {
-  const [linked, setLinked] = useState(false)
+  const [linked, setLinked] = useState(true)
 
   function commit(changed: 'w' | 'h', input: number) {
     const value = Math.round(input)
@@ -388,7 +388,7 @@ function SelectionTransform({
   onRotate: InspectorProps['onRotate']
   onStyleChange: InspectorProps['onStyleChange']
 }) {
-  const [linked, setLinked] = useState(false)
+  const [linked, setLinked] = useState(true)
   const { x, y, width, height, rotation } = selection
   if (x === null || y === null || width === null || height === null) return null
   const bounds = { x, y, width, height }
