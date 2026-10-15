@@ -235,7 +235,14 @@ export const LayersPanel = memo(function LayersPanel({
   useEffect(() => {
     const previous = previousSelection.current
     previousSelection.current = highlighted
-    if (selectionAnchor.current && !selected.has(selectionAnchor.current))
+    // A layer anchors a range without being selected itself, until the canvas selects something.
+    const anchor = selectionAnchor.current
+    const fromPanel = panelSelection.current
+    const panelMade =
+      !selected.size ||
+      (fromPanel?.size === selected.size &&
+        [...selected].every((element) => fromPanel.has(element)))
+    if (anchor && !selected.has(anchor) && !(isLayer(anchor) && anchor.isConnected && panelMade))
       selectionAnchor.current = null
     if (
       !highlighted.size ||
@@ -284,8 +291,9 @@ export const LayersPanel = memo(function LayersPanel({
 
   function activate(node: LayerNode, event: MouseEvent | KeyboardEvent) {
     if (!editor) return
-    if (node.kind === 'layer') {
-      selectionAnchor.current = null
+    const additive = event.metaKey || event.ctrlKey
+    if (node.kind === 'layer' && !additive && !event.shiftKey) {
+      selectionAnchor.current = node.element
       panelSelection.current = null
       act(
         () => {
@@ -296,8 +304,7 @@ export const LayersPanel = memo(function LayersPanel({
       )
       return
     }
-    if (isBlocked(node.element)) return
-    const additive = event.metaKey || event.ctrlKey
+    if (node.kind !== 'layer' && isBlocked(node.element)) return
     // Read the engine directly because its scheduled React refresh may lag behind rapid clicks.
     const selection = editor
       .getSelectedElements()
@@ -313,15 +320,21 @@ export const LayersPanel = memo(function LayersPanel({
       })
     } else {
       selectionAnchor.current = node.element
+      // A layer toggles its artwork as a whole.
+      const targets =
+        node.kind === 'layer'
+          ? layerSelectionRange(rows, node.element, node.element)
+          : [node.element]
+      const remove = additive && targets.length > 0 && targets.every((t) => selection.includes(t))
       act(
         () =>
-          additive && selection.includes(node.element)
+          remove
             ? selectInLayers(
                 editor,
-                selection.filter((element) => element !== node.element),
+                selection.filter((element) => !targets.includes(element)),
                 false,
               )
-            : selectInLayers(editor, [node.element], additive),
+            : selectInLayers(editor, targets, additive),
         { mutates: false },
       )
     }

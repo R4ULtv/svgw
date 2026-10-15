@@ -41,15 +41,28 @@ export function layerRows(tree: LayerNode[], expansion: ReadonlyMap<string, bool
   return rows
 }
 
-/** Select artwork in panel order, including unmounted rows but excluding collapsed branches. */
+/**
+ * Select artwork in panel order, including unmounted rows but excluding collapsed branches.
+ * A layer stands for its artwork at either end of the range or while collapsed; an expanded
+ * layer's own rows follow it.
+ */
 export function layerSelectionRange(rows: LayerRow[], anchor: Element | null, target: Element) {
   const end = rows.findIndex((row) => row.node.element === target)
   if (end < 0) return []
   const start = rows.findIndex((row) => row.node.element === anchor)
-  return rows
-    .slice(Math.min(start < 0 ? end : start, end), Math.max(start, end) + 1)
-    .filter((row) => row.node.kind !== 'layer' && !isBlocked(row.node.element))
-    .map((row) => row.node.element)
+  const first = Math.min(start < 0 ? end : start, end)
+  const elements = rows
+    .slice(first, Math.max(start, end) + 1)
+    .flatMap(({ node, depth }, offset) => {
+      const index = first + offset
+      if (isBlocked(node.element)) return []
+      if (node.kind !== 'layer') return [node.element]
+      const collapsed = !(rows[index + 1]?.depth > depth)
+      return index === start || index === end || collapsed
+        ? node.children.filter((child) => !isBlocked(child.element)).map((child) => child.element)
+        : []
+    })
+  return [...new Set(elements)]
 }
 
 /** A bounded number of mounted rows, regardless of document size. */
