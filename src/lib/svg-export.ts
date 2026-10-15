@@ -236,6 +236,6 @@ export function exportSummary(svg: string, scope: ExportScope = 'visible'): Expo
 }
 
 /** A file name for an export: the sole exported layer's name, or else the project's. */
-export function exportFileName(projectName: string, soleLayer: string | null, scope: ExportScope) {
-  return `${soleLayer || projectName.trim() || 'untitled'}${scope === 'all' ? '.full' : ''}`
+export function exportFileName(projectName: string, soleLayer: string | null) {
+  return soleLayer || projectName.trim() || 'untitled'
 }

@@ -721,7 +721,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     try {
       const source = currentSvg(project, { forExport: true })
       const svg = svgForExport(source, scope)
-      downloadSvg(svg, exportFileName(project.name, exportSummary(source, scope).soleLayer, scope))
+      downloadSvg(svg, exportFileName(project.name, exportSummary(source, scope).soleLayer))
     } catch (cause) {
       toast.error('Could not export SVG', { description: message(cause, 'Try again.') })
     }

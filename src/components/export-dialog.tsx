@@ -105,7 +105,7 @@ export function ExportDialog({ open, onOpenChange, name, size, getSvg }: ExportD
   }, [open, scope])
 
   const result = state.status === 'done' ? state.result : null
-  const suggestedName = exportFileName(name, summary?.soleLayer ?? null, scope)
+  const suggestedName = exportFileName(name, summary?.soleLayer ?? null)
   const chosenName = fileName?.trim() || suggestedName
   const download = () => {
     const svg = state.status === 'error' ? state.svg : result?.svg
