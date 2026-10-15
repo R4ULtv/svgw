@@ -113,6 +113,8 @@ export interface EditablePath {
     update(): void
   }[]
   update(): EditablePath
+  /** Rebuilds the node model and its grips from the element's current path data. */
+  init(): EditablePath
   storeD(): void
   endChanges(text: string): void
   movePts(dx: number, dy: number): void

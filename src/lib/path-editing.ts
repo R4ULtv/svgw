@@ -1,5 +1,6 @@
 import type { EditablePath, SvgEditor } from './editor'
 import { isBlocked, layerName, layerOf } from './layers'
+import { deleteNodes, transformArc } from './path-nodes'
 import { batchPathSegments } from './path-segment-batch'
 
 export type PathAction = 'add' | 'delete' | 'line' | 'curve'
@@ -14,6 +15,16 @@ export interface PathEditingState {
 
 type Point = { x: number; y: number }
 type NodePoint = Point & { index: number }
+/** The engine's Segment class, which owns a node's grip and its selected-segment outline. */
+interface EngineSegment {
+  type: number
+  item: Record<string, number | boolean>
+  prev?: EngineSegment
+  segsel?: Element | null
+  path: EditablePath
+  update(full?: boolean): void
+  addGrip(): void
+}
 
 /** Screen-space point containment works in either drag direction, at any canvas transform. */
 export function nodesInMarquee(
@@ -130,11 +141,55 @@ export function installPathEditing(editor: SvgEditor, refresh: () => void) {
     selectNodes(gesture.path, nodesInMarquee(gesture.nodes, gesture.start, end, gesture.previous))
   }
 
+  // The engine's outline maps an arc's radii, rotation and flags through the grip transform as
+  // though they were points, turning small rounded corners into huge loops. Redraw it instead.
+  function outlineArc(segment: EngineSegment) {
+    const { item, prev, segsel, path } = segment
+    if (segment.type !== 10 || !prev || !segsel) return
+    const zoom = editor.getZoom()
+    const m = path.matrix ?? { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }
+    const grip = ({ x, y }: Record<string, number | boolean>) => [
+      (m.a * Number(x) + m.c * Number(y) + m.e) * zoom,
+      (m.b * Number(x) + m.d * Number(y) + m.f) * zoom,
+    ]
+    const arc = transformArc(
+      {
+        r1: Number(item.r1),
+        r2: Number(item.r2),
+        angle: Number(item.angle),
+        sweep: !!item.sweepFlag,
+      },
+      { a: m.a * zoom, b: m.b * zoom, c: m.c * zoom, d: m.d * zoom },
+    )
+    segsel.setAttribute(
+      'd',
+      `M${grip(prev.item)} A${arc.r1},${arc.r2} ${arc.angle} ${item.largeArcFlag ? 1 : 0} ${arc.sweep ? 1 : 0} ${grip(item)}`,
+    )
+  }
+  let segmentClass: Pick<EngineSegment, 'update' | 'addGrip'> | null = null
+  let segmentMethods: Pick<EngineSegment, 'update' | 'addGrip'> | null = null
+  function patchSegments(path: EditablePath) {
+    const segment: unknown = path.segs[0] && Object.getPrototypeOf(path.segs[0])
+    if (segmentClass || !segment || typeof (segment as EngineSegment).addGrip !== 'function') return
+    segmentClass = segment as EngineSegment
+    const { update, addGrip } = segmentClass
+    segmentMethods = { update, addGrip }
+    segmentClass.update = function (this: EngineSegment, full) {
+      update.call(this, full)
+      outlineArc(this)
+    }
+    segmentClass.addGrip = function (this: EngineSegment) {
+      addGrip.call(this)
+      outlineArc(this)
+    }
+  }
+
   // The engine positions nodes using only rotate(), ignoring ancestor and matrix transforms.
   // Work in document coordinates, preserve the SVG's transforms, and invert the full matrix
   // after removing zoom when mapping a drag back into path coordinates.
   editor.getPath_ = (element) => {
     const path = getPath.call(editor, element)
+    patchSegments(path)
     if (!patched.has(path)) {
       const update = path.update
       const movePts = path.movePts
@@ -301,15 +356,23 @@ export function installPathEditing(editor: SvgEditor, refresh: () => void) {
       if (action === 'curve' && state.canConvert) editor.pathActions.setSegType(6)
       if (action === 'delete') {
         const path = editor.getPathObj()!
-        // SVG-Edit sorts indices lexicographically; deletion must run from last to first.
-        // The engine's final-node deletion calls a nonexistent canvas.canvas method.
+        // The engine deletes nodes one at a time through stale neighbor references, which
+        // corrupts the next subpath when a whole open subpath goes. Rebuild the data instead.
+        const data = deleteNodes(path.segs, path.selected_pts)
         const visible = path.segs.filter((seg) => seg.ptgrip)
-        if (state.nodes >= visible.length - 1) {
+        // The engine's final-node deletion calls a nonexistent canvas.canvas method.
+        if (data === '' || (data === null && state.nodes >= visible.length - 1)) {
           const element = path.elem
           end()
           editor.selectOnly([element], true)
           editor.deleteSelectedElements()
-        } else editor.pathActions.deletePathNode()
+        } else if (data === null) editor.pathActions.deletePathNode()
+        else {
+          path.storeD()
+          path.elem.setAttribute('d', data)
+          path.init().clearSelection()
+          path.endChanges('Delete path node(s)')
+        }
       }
       refresh()
     },
@@ -340,6 +403,7 @@ export function installPathEditing(editor: SvgEditor, refresh: () => void) {
         path.update = original.update
         path.movePts = original.movePts
       }
+      if (segmentClass && segmentMethods) Object.assign(segmentClass, segmentMethods)
     },
   }
 }
