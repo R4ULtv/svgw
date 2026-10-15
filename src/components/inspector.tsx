@@ -16,6 +16,7 @@ import {
   MousePointerClickIcon,
   RotateCwIcon,
   ScanIcon,
+  SplinePointerIcon,
   SquareRoundCornerIcon,
   SunIcon,
   TargetIcon,
@@ -78,6 +79,8 @@ interface InspectorProps {
   /** The SVG as it would be exported, and what it contains; shown with nothing selected. */
   readDocument: () => { svg: string; stats: ArtworkStats } | null
   onOptimize: () => void
+  /** Node editing is active; object properties return once it ends. */
+  editingPath?: boolean
 }
 
 const backdrops: { value: Backdrop; label: string; icon?: typeof SunIcon }[] = [
@@ -107,6 +110,7 @@ export function Inspector({
   documentRevision,
   readDocument,
   onOptimize,
+  editingPath = false,
 }: InspectorProps) {
   const selection = useSyncExternalStore(
     selectionStore.subscribe,
@@ -203,8 +207,17 @@ export function Inspector({
         <Section title="Document">
           <DocumentInfo revision={documentRevision} read={readDocument} onOptimize={onOptimize} />
           <div className="flex items-start gap-2.5 text-[11px] leading-relaxed text-muted-foreground">
-            <MousePointerClickIcon className="mt-0.5 size-3.5 shrink-0" />
-            <p>Select an object to edit its position, colors, and style.</p>
+            {editingPath ? (
+              <>
+                <SplinePointerIcon className="mt-0.5 size-3.5 shrink-0" />
+                <p>Editing path nodes. Choose Done to edit this path's colors and style.</p>
+              </>
+            ) : (
+              <>
+                <MousePointerClickIcon className="mt-0.5 size-3.5 shrink-0" />
+                <p>Select an object to edit its position, colors, and style.</p>
+              </>
+            )}
           </div>
         </Section>
       )}

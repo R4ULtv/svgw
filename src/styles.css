@@ -254,7 +254,8 @@
   --canvas-control-surface: #292524;
   --canvas-control-halo: rgb(28 25 23 / 0.75);
 }
-.svg-host #selectorParentGroup [id^='selectedBox'] {
+.svg-host #selectorParentGroup [id^='selectedBox'],
+.svg-host #pathpointgrip_container [id^='segline_'] {
   stroke: var(--canvas-control-accent);
   stroke-width: 1.25;
   stroke-dasharray: none;
@@ -326,7 +327,8 @@
 .svg-host #selectorGrip_rotate:active {
   cursor: grabbing !important;
 }
-.svg-host #selectorRubberBand {
+.svg-host #selectorRubberBand,
+.svg-host #svgw-node-marquee {
   fill: var(--canvas-control-accent);
   fill-opacity: 0.06;
   stroke: var(--canvas-control-accent);
@@ -346,31 +348,38 @@
   letter-spacing: 0.2px;
 }
 
-/* Path nodes share the square grips; round handles distinguish Bezier control points. SVG-Edit
-   marks selected nodes with a cyan stroke attribute, which we translate into a filled state. */
+/* Path nodes share the selection's square grips and borders. Round handles distinguish Bezier
+   control points, with the same 24px hit targets and filled selected/hover states. The engine's
+   cyan attributes encode selection state; only our warm control palette is painted. */
 .svg-host #pathpointgrip_container [id^='pathpointgrip_'] {
   r: 12px;
   fill: url(#svgw-control-corner);
   stroke: none;
+  pointer-events: all;
 }
 .svg-host #pathpointgrip_container [id^='pathpointgrip_'][stroke='#0FF'],
-.svg-host #pathpointgrip_container [id^='pathpointgrip_']:hover {
+.svg-host #pathpointgrip_container [id^='pathpointgrip_']:hover,
+.svg-host #pathpointgrip_container [id^='pathpointgrip_']:active {
   fill: url(#svgw-control-corner-active);
 }
 .svg-host #pathpointgrip_container [id^='ctrlpointgrip_'] {
-  r: 4px;
-  fill: var(--canvas-control-surface);
-  stroke: var(--canvas-control-accent);
-  stroke-width: 1;
+  r: 12px;
+  fill: url(#svgw-control-path-handle);
+  stroke: none;
+  pointer-events: all;
 }
 .svg-host #pathpointgrip_container [id^='ctrlpointgrip_'][fill='#0FF'],
-.svg-host #pathpointgrip_container [id^='ctrlpointgrip_']:hover {
-  fill: var(--canvas-control-accent);
+.svg-host #pathpointgrip_container [id^='ctrlpointgrip_']:hover,
+.svg-host #pathpointgrip_container [id^='ctrlpointgrip_']:active {
+  fill: url(#svgw-control-path-handle-active);
 }
 .svg-host #pathpointgrip_container [id^='ctrlLine_'] {
   stroke: var(--canvas-control-accent);
   stroke-width: 1;
   opacity: 0.6;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 0.75px var(--canvas-control-halo))
+    drop-shadow(0 0 0.75px var(--canvas-control-halo));
 }
 .svg-host #path_stretch_line {
   stroke: var(--canvas-control-accent);
@@ -380,14 +389,19 @@
 
 /* Held-key preview: hide SVG-Edit's selection box, grips, and path handles. */
 .svg-host[data-previewing] #selectorParentGroup,
-.svg-host[data-previewing] #pathpointgrip_container {
+.svg-host[data-previewing] #pathpointgrip_container,
+.svg-host[data-previewing] #svgw-node-marquee {
   display: none;
 }
 
 /* SVG-Edit only lets the current layer receive clicks. In Select mode every unlocked layer is
    clickable, as in Illustrator; the workspace switches layers before SVG-Edit handles the press. */
-.svg-host[data-mode='select'] #svgcontent > g.layer:not([data-svgw-locked]) {
+.svg-host[data-mode='select'] #svgcontent > g.layer:not([data-svgw-locked]),
+.svg-host[data-tool='editpath'] #svgcontent > g.layer:not([data-svgw-locked]) {
   pointer-events: all !important;
+}
+.svg-host[data-tool='editpath'] #svgcontent path {
+  cursor: crosshair;
 }
 .svg-host #svgcontent [data-svgw-locked] {
   pointer-events: none !important;

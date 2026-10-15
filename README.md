@@ -6,6 +6,7 @@ A browser-based SVG workspace for creating, editing, and exporting vector artwor
 
 - Create a blank canvas, start from a sample, or import SVG and portable `.json` projects. Review layers before opening a project or adding SVG artwork as a layer.
 - Draw and edit with SVG-Edit tools, undo/redo, and a scrollable canvas with pan and zoom.
+- Reshape existing paths with **Edit path** (**A**): drag nodes and Bézier handles, drag a box to select multiple nodes, and Shift-drag or Shift-click to extend the selection. Use the path controls to add or delete nodes and switch segments between straight lines and curves. Press **Esc** or **Done** to return to Select.
 - Organize artwork with nested layers, visibility, locking, renaming, and drag-and-drop reordering.
 - Edit fill, stroke, and opacity with HEX, RGB, HSL, and OKLCH color inputs.
 - Resize the artboard, fit it to artwork, and use rulers, guides, and snapping.

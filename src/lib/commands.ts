@@ -102,6 +102,7 @@ export const commands = {
   'file.rename': { title: 'Rename project', group: 'File', scope: 'editor', binding: keys('F2') },
 
   'tool.select': { title: 'Select tool', group: 'Tools', scope: 'editor', binding: keys('V') },
+  'tool.editPath': { title: 'Edit path tool', group: 'Tools', scope: 'editor', binding: keys('A') },
   'tool.hand': { title: 'Hand tool', group: 'Tools', scope: 'editor', binding: keys('H') },
   'tool.rect': { title: 'Rectangle tool', group: 'Tools', scope: 'editor', binding: keys('R') },
   'tool.ellipse': { title: 'Ellipse tool', group: 'Tools', scope: 'editor', binding: keys('E') },

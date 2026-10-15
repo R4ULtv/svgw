@@ -115,6 +115,13 @@ export const LayersPanel = memo(function LayersPanel({
     // oxlint-disable-next-line react/exhaustive-deps -- Selection changes inside the engine without changing its identity.
     [editor, selectionRevision],
   )
+  // Node editing empties the engine's selection; the edited path still reads as selected, but
+  // panel actions keep using the engine's selection.
+  const highlighted = useMemo(() => {
+    const edited = editor?.getMode() === 'pathedit' ? editor.getPathObj()?.elem : null
+    return edited && !selected.has(edited) ? new Set([...selected, edited]) : selected
+    // oxlint-disable-next-line react/exhaustive-deps -- The edited path changes with the selection revision.
+  }, [editor, selected, selectionRevision])
   const currentLayer = editor?.getCurrentDrawing().getCurrentLayer() ?? null
   // Hidden or empty layers stay collapsed. Explicit choices survive visibility changes and edits.
   const [expansion, setExpansion] = useState<Map<string, boolean>>(() => new Map())
@@ -133,7 +140,7 @@ export const LayersPanel = memo(function LayersPanel({
   const range = layerRowWindow(rows.length, visibleWindow.top, visibleWindow.height)
   const selectedParents = useMemo(() => {
     const parents = new Set<Element>()
-    for (const element of selected) {
+    for (const element of highlighted) {
       for (
         let parent = element.parentElement;
         parent && parent.id !== 'svgcontent';
@@ -143,7 +150,7 @@ export const LayersPanel = memo(function LayersPanel({
     }
     return parents
     // oxlint-disable-next-line react/exhaustive-deps -- Reparenting mutates DOM ancestry without changing the selected elements.
-  }, [selected, documentRevision])
+  }, [highlighted, documentRevision])
   const deleteBinding = useBinding('selection.delete')
   const centerBinding = useBinding('selection.center')
   const hideBinding = useBinding('selection.hide')
@@ -227,17 +234,18 @@ export const LayersPanel = memo(function LayersPanel({
   // Reveal canvas selections: expand their ancestors and scroll the first one into view.
   useEffect(() => {
     const previous = previousSelection.current
-    previousSelection.current = selected
+    previousSelection.current = highlighted
     if (selectionAnchor.current && !selected.has(selectionAnchor.current))
       selectionAnchor.current = null
     if (
-      !selected.size ||
-      (previous.size === selected.size && [...selected].every((element) => previous.has(element)))
+      !highlighted.size ||
+      (previous.size === highlighted.size &&
+        [...highlighted].every((element) => previous.has(element)))
     )
       return
     setExpansion((before) => {
       const next = new Map(before)
-      for (const element of selected) {
+      for (const element of highlighted) {
         for (
           let node = element.parentElement;
           node && node.id !== 'svgcontent';
@@ -252,7 +260,7 @@ export const LayersPanel = memo(function LayersPanel({
         ? before
         : next
     })
-  }, [selected])
+  }, [selected, highlighted])
 
   useEffect(() => {
     // Panel clicks already target a visible row; keep its scroll position while selecting a range.
@@ -263,8 +271,8 @@ export const LayersPanel = memo(function LayersPanel({
     )
       return
     panelSelection.current = null
-    if (selected.size) revealRow(rows.findIndex((row) => selected.has(row.node.element)))
-  }, [rows, selected])
+    if (highlighted.size) revealRow(rows.findIndex((row) => highlighted.has(row.node.element)))
+  }, [rows, selected, highlighted])
 
   if (!editor) return null
 
@@ -493,7 +501,7 @@ export const LayersPanel = memo(function LayersPanel({
     const Icon = node.kind === 'layer' ? LayersIcon : (ICONS[node.tag] ?? SquareIcon)
     const expanded = isExpanded(node)
     const hasChildren = node.children.length > 0
-    const isSelected = selected.has(node.element)
+    const isSelected = highlighted.has(node.element)
     const containsSelection = !isSelected && selectedParents.has(node.element)
     const dimmed = hiddenAbove || node.hidden
     const isCurrent = node.element === currentLayer

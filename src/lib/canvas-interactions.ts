@@ -37,7 +37,9 @@ export function installCanvasInteractions(editor: SvgEditor, refresh: () => void
     const context = (editor.getCurrentGroup() ??
       editor.getCurrentDrawing().getCurrentLayer()) as SVGGraphicsElement | null
     const screen = (
-      marquee ? editor.getSvgContent() : (context ?? editor.getSvgContent())
+      marquee || editor.getMode?.() === 'pathedit'
+        ? editor.getSvgContent()
+        : (context ?? editor.getSvgContent())
     ).getScreenCTM()
     setRootSctm.call(editor, screen ? screen.inverse() : matrix)
   }

@@ -76,12 +76,15 @@ export function EditorStatusHint({
     ]
   } else if (mode === 'pathedit') {
     hints = [
-      'Drag nodes or handles to reshape the path',
+      'Drag nodes or handles to reshape',
+      'Drag across nodes to select them',
       <>
-        <Kbd>Shift</Kbd> + click to add or remove nodes from the selection
+        <Kbd>Shift</Kbd> + click or drag to change the selection
       </>,
       backToSelect,
     ]
+  } else if (tool === 'editpath') {
+    hints = ['Click a path to edit its nodes, including paths inside groups', backToSelect]
   } else if (mode === 'resize') {
     hints = [
       'Drag a corner to resize proportionally',
@@ -160,6 +163,9 @@ export function EditorStatusHint({
         <Kbd>Shift</Kbd> + click to add or remove from the selection
       </>,
       'Double-click a group to edit inside',
+      <>
+        Edit path <CommandShortcut command="tool.editPath" />
+      </>,
     ]
   }
 

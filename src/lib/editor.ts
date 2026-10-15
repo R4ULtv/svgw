@@ -16,7 +16,16 @@ export type SvgEditor = Omit<
   | 'setResolution'
   | 'contentW'
   | 'contentH'
+  | 'pathActions'
 > & {
+  pathActions: SvgCanvas['pathActions'] & {
+    toEditMode(element: Element): void
+    toSelectMode(element?: Element): void
+  }
+  getPath_(element: Element): EditablePath
+  getPathObj(): EditablePath | null
+  getPointFromGrip(point: { x: number; y: number }, path: EditablePath): { x: number; y: number }
+  recalcRotatedPath(): void
   setSvgOption(name: 'round_digits', value: number): void
   /** Cached client-to-editing-context matrix used throughout a pointer gesture. */
   setRootSctm(matrix: DOMMatrix): void
@@ -84,8 +93,29 @@ export type SvgEditor = Omit<
   }
 }
 
-/** Toolbar tools. All but 'hand' are SVG-Edit modes; the hand pans the view and leaves SVG-Edit in 'select'. */
-export type Tool = 'select' | 'rect' | 'ellipse' | 'path' | 'hand'
+/** The small part of SVG-Edit's path model used by the node editor. */
+export interface EditablePath {
+  elem: SVGPathElement
+  selected_pts: number[]
+  matrix: DOMMatrix | null
+  imatrix: DOMMatrix | null
+  segs: {
+    type: number
+    prev?: unknown
+    ptgrip?: Element
+    item: { x: number; y: number }
+    update(): void
+  }[]
+  update(): EditablePath
+  storeD(): void
+  endChanges(text: string): void
+  movePts(dx: number, dy: number): void
+  clearSelection(): void
+  addPtsToSelection(indices: number[]): void
+}
+
+/** Edit path and Hand keep the engine in Select while waiting for a target or a pan. */
+export type Tool = 'select' | 'editpath' | 'rect' | 'ellipse' | 'path' | 'hand'
 export type PaintAttribute = 'fill' | 'stroke'
 
 export interface Selection {

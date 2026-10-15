@@ -27,6 +27,7 @@ import { loadCanvas } from '@/lib/load-canvas'
 import { createBackgroundTask } from '@/lib/background-task'
 import { installCanvasControls } from '@/lib/canvas-controls'
 import { installCanvasInteractions } from '@/lib/canvas-interactions'
+import { installPathEditing, type PathEditingState } from '@/lib/path-editing'
 import {
   readDocumentColors,
   startColorReplacement,
@@ -130,6 +131,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { CommandShortcut, useCommandHeld, useCommands, useCommandScope } from './commands'
 import { EditorToolbar } from './editor-toolbar'
+import { PathEditingToolbar } from './path-editing-toolbar'
 import { CanvasZoomHint, EditorStatusHint } from './editor-status-hint'
 import { Inspector, type Backdrop } from './inspector'
 import { Logo } from './logo'
@@ -182,6 +184,14 @@ export function Workspace({ projectId }: { projectId: string }) {
   const fileInput = useRef<HTMLInputElement>(null)
   const [importRequest, setImportRequest] = useState<ImportRequest | null>(null)
   const engine = useRef<SvgEditor | null>(null)
+  const pathEditing = useRef<ReturnType<typeof installPathEditing> | null>(null)
+  const [pathState, setPathState] = useState<PathEditingState>({
+    editing: false,
+    nodes: 0,
+    canSplit: false,
+    canConvert: false,
+    rejected: false,
+  })
   const active = useRef<Project | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [ready, setReady] = useState(false)
@@ -208,9 +218,14 @@ export function Workspace({ projectId }: { projectId: string }) {
   const documentRefresh = useRef(false)
   const appearanceRefresh = useRef(true)
   const movingSelection = useRef(false)
-  const lastSelection = useRef<{ elements: Element[]; layer: Element | null }>({
+  const lastSelection = useRef<{
+    elements: Element[]
+    layer: Element | null
+    edited: Element | null
+  }>({
     elements: [],
     layer: null,
+    edited: null,
   })
   const [zoom, setZoom] = useState(1)
   const zoomRef = useRef(1)
@@ -427,15 +442,27 @@ export function Workspace({ projectId }: { projectId: string }) {
   function syncEditorState() {
     const editor = engine.current
     if (!editor) return
+    const path = pathEditing.current?.sync()
+    if (path)
+      setPathState((previous) =>
+        Object.keys(path).every(
+          (key) => previous[key as keyof PathEditingState] === path[key as keyof PathEditingState],
+        )
+          ? previous
+          : path,
+      )
     const elements = editor.getSelectedElements().filter((item): item is Element => item !== null)
     const layer = editor.getCurrentDrawing().getCurrentLayer()
+    // Node editing empties the engine's selection; Layers still highlights the edited path.
+    const edited = editor.getMode() === 'pathedit' ? (editor.getPathObj()?.elem ?? null) : null
     const previous = lastSelection.current
     const selectionChanged =
       layer !== previous.layer ||
+      edited !== previous.edited ||
       elements.length !== previous.elements.length ||
       elements.some((element, index) => element !== previous.elements[index])
     if (selectionChanged) {
-      lastSelection.current = { elements, layer }
+      lastSelection.current = { elements, layer, edited }
       setSelectionRevision((value) => value + 1)
     }
     if (selectionChanged || documentRefresh.current) {
@@ -467,7 +494,13 @@ export function Workspace({ projectId }: { projectId: string }) {
     setMode(current)
     // The hand tool keeps SVG-Edit idle in 'select', so a 'select' mode means it is still active.
     setTool((previous) =>
-      previous === 'hand' && current === 'select' ? 'hand' : isTool(current) ? current : 'select',
+      pathEditing.current?.isActive()
+        ? 'editpath'
+        : previous === 'hand' && current === 'select'
+          ? 'hand'
+          : isTool(current)
+            ? current
+            : 'select',
     )
     if (documentRefresh.current) {
       if (appearanceRefresh.current) {
@@ -597,6 +630,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     const editor = engine.current
     if (!editor) return
     commitAttribute()
+    pathEditing.current?.deactivate()
     editor.leaveContext()
     void flushSave()
     // Promote Illustrator/Inkscape layers before sanitizing, which drops Inkscape's namespaced attributes.
@@ -932,11 +966,19 @@ export function Workspace({ projectId }: { projectId: string }) {
 
   function selectTool(next: Tool) {
     commitAttribute()
+    if (next === 'editpath') {
+      pathEditing.current?.activate()
+      setTool(next)
+      refreshEditorState()
+      return
+    }
+    pathEditing.current?.deactivate(next === 'select')
     if (next === 'rect' || next === 'ellipse' || next === 'path') setStarterDismissed(true)
     const mode = next === 'hand' ? 'select' : next
     engine.current?.setMode(mode)
     setMode(mode)
     setTool(next)
+    refreshEditorState()
   }
 
   useEffect(() => {
@@ -967,6 +1009,7 @@ export function Workspace({ projectId }: { projectId: string }) {
         addCheckerPattern(canvas.getSvgRoot())
         disposeControls = installCanvasControls(canvas)
         disposeInteractions = installCanvasInteractions(canvas, refreshEditorState)
+        pathEditing.current = installPathEditing(canvas, refreshEditorState)
         // SVG-Edit records some edits (dragging objects, for one) without emitting 'changed', which
         // left them unsaved. Editor state synchronization coalesces all notifications per frame.
         const addCommand = canvas.undoMgr.addCommandToHistory.bind(canvas.undoMgr)
@@ -981,6 +1024,8 @@ export function Workspace({ projectId }: { projectId: string }) {
         for (const method of ['undo', 'redo'] as const) {
           const step = canvas.undoMgr[method].bind(canvas.undoMgr)
           canvas.undoMgr[method] = () => {
+            const edited = canvas!.getMode() === 'pathedit' ? canvas!.getPathObj()?.elem : null
+            if (edited) pathEditing.current?.deactivate()
             const previous = canvas!.getCurrentDrawing().getCurrentLayer()
             const previousViewBox = canvas!.getSvgContent().getAttribute('viewBox')
             step()
@@ -988,6 +1033,10 @@ export function Workspace({ projectId }: { projectId: string }) {
             canvas!.identifyLayers()
             if (previous?.parentNode === canvas!.getSvgContent())
               canvas!.setCurrentLayer(layerName(previous))
+            if (edited?.isConnected && !isBlocked(edited)) {
+              canvas!.selectOnly([edited], true)
+              pathEditing.current?.activate()
+            }
             documentChanged()
           }
         }
@@ -1107,6 +1156,12 @@ export function Workspace({ projectId }: { projectId: string }) {
       )
         return
       const mode = editor.getMode()
+      // Node marquee selection follows the pointer freely; only node/handle drags snap.
+      if (
+        mode === 'pathedit' &&
+        !event.target.closest('[id^="pathpointgrip_"], [id^="ctrlpointgrip_"]')
+      )
+        return
       const start = toDocument(editor, event.clientX, event.clientY)
       if (mode === 'select') {
         if (event.target.closest('[id^="selectorGrip_resize_"]'))
@@ -1281,6 +1336,8 @@ export function Workspace({ projectId }: { projectId: string }) {
       pendingZoom.current = null
       disposeControls?.()
       disposeInteractions?.()
+      pathEditing.current?.dispose()
+      pathEditing.current = null
       if (canvas) {
         // The engine has no public destroy method; release host listeners and event callbacks.
         canvas.bind('changed', () => {})
@@ -1368,7 +1425,7 @@ export function Workspace({ projectId }: { projectId: string }) {
   }, [])
 
   useCommandScope('editor', Boolean(project))
-  useCommandScope('selection', Boolean(project && selection))
+  useCommandScope('selection', Boolean(project && (selection || pathState.nodes)))
   useCommandScope('dialog', sidebarOpen || Boolean(pendingRemoteDelete))
   const previewing = useCommandHeld('view.preview')
   const spacePan = useCommandHeld('view.pan')
@@ -1397,8 +1454,18 @@ export function Workspace({ projectId }: { projectId: string }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
+  function deleteSelection() {
+    commitAttribute()
+    if (engine.current?.getMode() === 'pathedit') pathEditing.current?.action('delete')
+    else engine.current?.deleteSelectedElements()
+  }
+
   function nudge(dx: number, dy: number) {
     commitAttribute()
+    if (engine.current?.getMode() === 'pathedit') {
+      pathEditing.current?.nudge(dx, dy)
+      return
+    }
     movingSelection.current = true
     try {
       engine.current?.moveSelectedElements(dx, dy, true)
@@ -1440,6 +1507,7 @@ export function Workspace({ projectId }: { projectId: string }) {
     },
     'file.rename': () => setRenaming(true),
     'tool.select': () => selectTool('select'),
+    'tool.editPath': () => selectTool('editpath'),
     'tool.rect': () => selectTool('rect'),
     'tool.ellipse': () => selectTool('ellipse'),
     'tool.pen': () => selectTool('path'),
@@ -1453,10 +1521,11 @@ export function Workspace({ projectId }: { projectId: string }) {
       engine.current?.undoMgr.redo()
     },
     'edit.escape': () => {
-      if (tool === 'hand' || engine.current?.getMode() !== 'select') selectTool('select')
+      if (tool === 'hand' || tool === 'editpath' || engine.current?.getMode() !== 'select')
+        selectTool('select')
       else engine.current?.clearSelection()
     },
-    'selection.delete': () => engine.current?.deleteSelectedElements(),
+    'selection.delete': deleteSelection,
     'selection.hide': () => changeArtworkState('hidden'),
     'selection.lock': () => changeArtworkState('locked'),
     'selection.center': centerSelection,
@@ -1562,6 +1631,7 @@ export function Workspace({ projectId }: { projectId: string }) {
       colors={documentColors}
       onReplaceColor={replaceColor}
       onStyleChange={changeStyle}
+      editingPath={pathState.editing}
       documentRevision={documentRevision}
       readDocument={() =>
         project && engine.current
@@ -1658,7 +1728,7 @@ export function Workspace({ projectId }: { projectId: string }) {
               onToolChange={selectTool}
               canUndo={history.undo}
               canRedo={history.redo}
-              canDelete={Boolean(selection)}
+              canDelete={Boolean(selection) || pathState.nodes > 0}
               onUndo={() => {
                 commitAttribute()
                 engine.current?.undoMgr.undo()
@@ -1667,7 +1737,7 @@ export function Workspace({ projectId }: { projectId: string }) {
                 commitAttribute()
                 engine.current?.undoMgr.redo()
               }}
-              onDelete={() => engine.current?.deleteSelectedElements()}
+              onDelete={deleteSelection}
               inspector={inspector}
               className={view.rulers ? 'top-8' : undefined}
             />
@@ -1727,12 +1797,20 @@ export function Workspace({ projectId }: { projectId: string }) {
                 data-backdrop={backdrop}
                 data-previewing={previewing || undefined}
                 data-mode={mode}
+                data-tool={tool}
                 data-pan={grabbing ? 'grabbing' : panReady ? 'ready' : undefined}
                 className="svg-host shrink-0"
                 hidden={!project}
                 aria-label="SVG editing canvas"
               />
             </div>
+            {project && tool === 'editpath' && (
+              <PathEditingToolbar
+                state={pathState}
+                onAction={(action) => pathEditing.current?.action(action)}
+                onDone={() => selectTool('select')}
+              />
+            )}
             {ready &&
               !opening &&
               project &&

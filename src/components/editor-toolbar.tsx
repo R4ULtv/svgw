@@ -7,6 +7,7 @@ import {
   Redo2Icon,
   SlidersHorizontalIcon,
   SquareIcon,
+  SplinePointerIcon,
   Trash2Icon,
   Undo2Icon,
   type LucideIcon,
@@ -23,6 +24,7 @@ import { CommandShortcut, ShortcutHint } from './commands'
 
 const tools: { value: Tool; label: string; command: CommandId; icon: LucideIcon }[] = [
   { value: 'select', label: 'Select', command: 'tool.select', icon: MousePointer2Icon },
+  { value: 'editpath', label: 'Edit path', command: 'tool.editPath', icon: SplinePointerIcon },
   { value: 'hand', label: 'Hand', command: 'tool.hand', icon: HandIcon },
   { value: 'rect', label: 'Rectangle', command: 'tool.rect', icon: SquareIcon },
   { value: 'ellipse', label: 'Ellipse', command: 'tool.ellipse', icon: CircleIcon },
@@ -62,7 +64,7 @@ export function EditorToolbar({
       role="toolbar"
       aria-label="Editor tools"
       className={cn(
-        'absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 border bg-popover/95 p-1 shadow-md shadow-black/10 backdrop-blur dark:shadow-black/40',
+        'absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 border bg-popover/95 p-1 shadow-md shadow-black/10 backdrop-blur max-[480px]:flex-col dark:shadow-black/40',
         className,
       )}
     >
@@ -96,35 +98,37 @@ export function EditorToolbar({
       </ToggleGroup>
       <Separator
         orientation="vertical"
-        className="mx-1 data-vertical:h-5 data-vertical:self-center"
+        className="mx-1 data-vertical:h-5 data-vertical:self-center max-[480px]:hidden"
       />
-      <ToolButton label="Undo" command="edit.undo" disabled={!canUndo} onClick={onUndo}>
-        <Undo2Icon />
-      </ToolButton>
-      <ToolButton label="Redo" command="edit.redo" disabled={!canRedo} onClick={onRedo}>
-        <Redo2Icon />
-      </ToolButton>
-      <ToolButton
-        label="Delete"
-        command="selection.delete"
-        disabled={!canDelete}
-        onClick={onDelete}
-      >
-        <Trash2Icon />
-      </ToolButton>
-      <div className="contents lg:hidden">
-        <Separator
-          orientation="vertical"
-          className="mx-1 data-vertical:h-5 data-vertical:self-center"
-        />
-        <Popover>
-          <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="Properties" />}>
-            <SlidersHorizontalIcon />
-          </PopoverTrigger>
-          <PopoverContent align="end" className="max-h-[70dvh] w-72 overflow-y-auto p-0">
-            {inspector}
-          </PopoverContent>
-        </Popover>
+      <div className="flex items-center gap-1">
+        <ToolButton label="Undo" command="edit.undo" disabled={!canUndo} onClick={onUndo}>
+          <Undo2Icon />
+        </ToolButton>
+        <ToolButton label="Redo" command="edit.redo" disabled={!canRedo} onClick={onRedo}>
+          <Redo2Icon />
+        </ToolButton>
+        <ToolButton
+          label="Delete"
+          command="selection.delete"
+          disabled={!canDelete}
+          onClick={onDelete}
+        >
+          <Trash2Icon />
+        </ToolButton>
+        <div className="contents lg:hidden">
+          <Separator
+            orientation="vertical"
+            className="mx-1 data-vertical:h-5 data-vertical:self-center"
+          />
+          <Popover>
+            <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="Properties" />}>
+              <SlidersHorizontalIcon />
+            </PopoverTrigger>
+            <PopoverContent align="end" className="max-h-[70dvh] w-72 overflow-y-auto p-0">
+              {inspector}
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
     </div>
   )

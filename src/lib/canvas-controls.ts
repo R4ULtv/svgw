@@ -25,8 +25,10 @@ function addControlPatterns(root: SVGSVGElement) {
   })
   shadow.append(svg('feDropShadow', { dx: 0, dy: 1, stdDeviation: 1, 'flood-opacity': 0.18 }))
   defs.append(shadow)
+  // Filled controls need the opposite-color border to remain visible over matching artwork.
+  // The surface/accent colors swap together when the artboard backdrop is dark.
   for (const active of [false, true]) {
-    for (const kind of ['corner', 'edge-x', 'edge-y', 'rotate'] as const) {
+    for (const kind of ['corner', 'edge-x', 'edge-y', 'rotate', 'path-handle'] as const) {
       const size = kind === 'rotate' ? 28 : 24
       const center = size / 2
       const pattern = svg('pattern', {
@@ -43,8 +45,8 @@ function addControlPatterns(root: SVGSVGElement) {
             cy: center,
             r: 9,
             fill: active ? 'var(--canvas-control-accent)' : 'var(--canvas-control-surface)',
-            stroke: 'var(--canvas-control-accent)',
-            'stroke-width': 1.25,
+            stroke: active ? 'var(--canvas-control-surface)' : 'var(--canvas-control-accent)',
+            'stroke-width': active ? 1.5 : 1.25,
             filter: 'url(#svgw-control-shadow)',
           }),
           svg('path', {
@@ -58,6 +60,18 @@ function addControlPatterns(root: SVGSVGElement) {
             'stroke-linejoin': 'round',
           }),
         )
+      } else if (kind === 'path-handle') {
+        pattern.append(
+          svg('circle', {
+            cx: center,
+            cy: center,
+            r: 4,
+            fill: active ? 'var(--canvas-control-accent)' : 'var(--canvas-control-surface)',
+            stroke: active ? 'var(--canvas-control-surface)' : 'var(--canvas-control-accent)',
+            'stroke-width': active ? 1.5 : 1.25,
+            filter: 'url(#svgw-control-shadow)',
+          }),
+        )
       } else {
         const width = kind === 'edge-x' ? 13 : kind === 'edge-y' ? 5 : 9
         const height = kind === 'edge-y' ? 13 : kind === 'edge-x' ? 5 : 9
@@ -69,8 +83,8 @@ function addControlPatterns(root: SVGSVGElement) {
             height,
             rx: kind === 'corner' ? 2 : 2.5,
             fill: active ? 'var(--canvas-control-accent)' : 'var(--canvas-control-surface)',
-            stroke: 'var(--canvas-control-accent)',
-            'stroke-width': 1.25,
+            stroke: active ? 'var(--canvas-control-surface)' : 'var(--canvas-control-accent)',
+            'stroke-width': active ? 1.5 : 1.25,
             filter: 'url(#svgw-control-shadow)',
           }),
         )
