@@ -71,6 +71,12 @@ export type SvgEditor = Omit<
       text?: string,
     ) => Command & { addSubCommand(command: Command): void; isEmpty(): boolean }
     InsertElementCommand: new (element: Element, text?: string) => Command
+    RemoveElementCommand: new (
+      element: Element,
+      oldNextSibling: Node | null,
+      oldParent: Node,
+      text?: string,
+    ) => Command
     MoveElementCommand: new (
       element: Element,
       oldNextSibling: Node | null,

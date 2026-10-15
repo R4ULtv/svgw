@@ -443,60 +443,174 @@ export interface DropTarget {
   before: Element | null
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+/** `name`, numbered if another layer already has it: SVG-Edit addresses layers by name. */
+function uniqueLayerName(editor: SvgEditor, name: string) {
+  const names = new Set([...editor.getSvgContent().children].filter(isLayer).map(layerName))
+  let unique = name
+  for (let index = 2; names.has(unique); index++) unique = `${name} ${index}`
+  return unique
+}
+
+const withoutPointerEvents = (element: Element) =>
+  (element.getAttribute('style') ?? '')
+    .replace(/(^|;)\s*pointer-events\s*:[^;]*/g, '')
+    .replace(/^;+/, '')
+    .trim() || null
+
 /**
  * Moves elements to a new parent or stacking position as one undo step. Elements keep their
  * on-canvas position when the new parent has a different transform, as Illustrator does.
+ * Like Illustrator's sublayers, a layer moved inside another layer or group becomes a group, and a
+ * group moved between layers becomes a layer; other objects moved there get a layer of their own.
  */
 export function moveElements(editor: SvgEditor, elements: Element[], target: DropTarget) {
-  const { BatchCommand, MoveElementCommand, ChangeElementCommand } = editor.history as History
+  const {
+    BatchCommand,
+    MoveElementCommand,
+    ChangeElementCommand,
+    InsertElementCommand,
+    RemoveElementCommand,
+  } = editor.history as History
   const batch = new BatchCommand('Move in Layers')
-  const movingLayers = elements.some(isLayer)
+  const content = editor.getSvgContent()
+  const toTop = target.parent === content
   const current = editor.getCurrentDrawing().getCurrentLayer()
+  let layersChanged = false
   editor.clearSelection()
-  for (const element of elements) {
+  if (editor.getCurrentGroup()) editor.leaveContext()
+  // Moved elements keep their stacking order relative to each other.
+  const ordered = [...elements].sort((a, b) =>
+    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+  )
+  for (const element of ordered) {
     if (element === target.before || element.contains(target.parent)) continue
     const oldParent = element.parentElement
     if (!oldParent) continue
-    const oldNext = element.nextSibling
+    const wasLayer = isLayer(element)
+    let parent = target.parent
+    let before = target.before
     // Work out the compensating transform before touching the DOM, so a failure can't leave a half-done move.
     const transform =
-      oldParent !== target.parent && !isLayer(element)
-        ? compensatingTransform(element, oldParent, target.parent)
-        : null
-    target.parent.insertBefore(element, target.before)
+      oldParent !== parent ? compensatingTransform(element, oldParent, parent) : null
+
+    // Commands are ordered so that undo and redo never leave a group without layer markup at the
+    // top level, where SVG-Edit would wrap it in a layer of its own.
+    if (toTop && !wasLayer) {
+      const named = objectName(element)
+      const name = uniqueLayerName(editor, named.startsWith('<') ? nextLayerName(editor) : named)
+      if (element.localName === 'g') {
+        // The group becomes the layer. Recording its style lets undo drop the pointer-events
+        // SVG-Edit sets on layers, which would otherwise leave it unclickable.
+        const title = [...element.children].find((child) => child.localName === 'title')
+        if (title) {
+          const old = title.textContent
+          title.textContent = name
+          batch.addSubCommand(new ChangeElementCommand(title, { '#text': old }))
+        } else {
+          const created = document.createElementNS(SVG_NS, 'title')
+          created.textContent = name
+          element.prepend(created)
+          batch.addSubCommand(new InsertElementCommand(created))
+        }
+        batch.addSubCommand(
+          changeAttributes(
+            editor,
+            element,
+            {
+              class: [...new Set([...element.classList, 'layer'])].join(' '),
+              'data-name': null,
+              style: element.getAttribute('style'),
+            },
+            'Make Layer',
+          ),
+        )
+      } else {
+        // Other objects get a new layer, created where they were dropped.
+        const layer = document.createElementNS(SVG_NS, 'g')
+        layer.setAttribute('class', 'layer')
+        const title = document.createElementNS(SVG_NS, 'title')
+        title.textContent = name
+        layer.append(title)
+        content.insertBefore(layer, before)
+        batch.addSubCommand(new InsertElementCommand(layer))
+        parent = layer
+        before = null
+      }
+      layersChanged = true
+    }
+
+    const oldNext = element.nextSibling
+    parent.insertBefore(element, before)
     batch.addSubCommand(new MoveElementCommand(element, oldNext, oldParent))
-    if (transform) {
+    if (transform !== null) {
       const old = element.getAttribute('transform')
-      element.setAttribute('transform', transform)
+      if (transform) element.setAttribute('transform', transform)
+      else element.removeAttribute('transform')
       batch.addSubCommand(new ChangeElementCommand(element, { transform: old }))
+    }
+
+    if (wasLayer) {
+      layersChanged = true
+      if (!toTop) {
+        // The layer becomes a group named after it, without SVG-Edit's layer markup.
+        const name = layerName(element)
+        for (const title of [...element.children].filter((child) => child.localName === 'title')) {
+          const next = title.nextSibling
+          title.remove()
+          batch.addSubCommand(new RemoveElementCommand(title, next, element))
+        }
+        const classes = [...element.classList].filter((item) => item !== 'layer').join(' ')
+        batch.addSubCommand(
+          changeAttributes(
+            editor,
+            element,
+            {
+              class: classes || null,
+              'data-name': name || null,
+              style: withoutPointerEvents(element),
+            },
+            'Make Group',
+          ),
+        )
+      }
     }
   }
   if (batch.isEmpty()) return false
   editor.undoMgr.addCommandToHistory(batch)
-  if (movingLayers) {
-    // SVG-Edit caches layer order; re-read it and keep the same layer active.
+  if (layersChanged) {
+    // SVG-Edit caches its layers; re-read them and keep the same layer active, or the one that
+    // now contains it.
     editor.identifyLayers()
-    if (current) editor.setCurrentLayer(layerName(current))
+    const active = current && (isLayer(current) ? current : layerOf(current))
+    if (active) editor.setCurrentLayer(layerName(active))
   }
   return true
 }
 
 const ctm = (element: Element) => {
-  const matrix = (element as SVGGraphicsElement).getCTM?.()
-  // getCTM returns a legacy SVGMatrix; DOMMatrix supports isIdentity and mixes with other matrices.
+  // Screen matrices relate the document root (moves to the top level) to the groups inside it.
+  const matrix = (element as SVGGraphicsElement).getScreenCTM?.()
+  // The legacy SVGMatrix becomes a DOMMatrix, which supports isIdentity and mixes with other matrices.
   return matrix ? DOMMatrix.fromMatrix(matrix) : null
 }
 
-/** The transform that keeps `element` in place when moved from `from` into `to`, or null if none is needed. */
+/**
+ * The transform that keeps `element` in place when moved from `from` into `to`: null if the move
+ * needs no change, or empty if the element needs no transform at all.
+ */
 function compensatingTransform(element: Element, from: Element, to: Element) {
   const source = ctm(from)
   const destination = ctm(to)
   if (!source || !destination) return null
   const delta = destination.inverse().multiply(source)
-  if (delta.isIdentity) return null
+  // Screen matrices are single precision, so compare the rounded change.
+  if (matrixValue(delta) === 'translate(0 0)') return null
   const local = (element as SVGGraphicsElement).transform?.baseVal.consolidate()?.matrix
-  const m = delta.multiply(local ? DOMMatrix.fromMatrix(local) : new DOMMatrix())
-  return `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.e} ${m.f})`
+  const value = matrixValue(delta.multiply(local ? DOMMatrix.fromMatrix(local) : new DOMMatrix()))
+  // An empty value removes a transform the move cancels out, as when a nested layer moves back.
+  return value === 'translate(0 0)' ? '' : value
 }
 
 /** Select artwork across layers; enter a group only when the whole selection shares it. */

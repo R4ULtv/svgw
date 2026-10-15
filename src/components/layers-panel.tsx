@@ -374,6 +374,10 @@ export const LayersPanel = memo(function LayersPanel({
     event.dataTransfer.setData('text/plain', node.name)
   }
 
+  /**
+   * Layers and groups take drops in their middle and place them beside themselves near their
+   * edges, so layers can nest in other layers and groups can move out between layers.
+   */
   function positionFor(node: LayerNode, event: DragEvent): DropPosition | null {
     if (
       !dragging.length ||
@@ -382,11 +386,29 @@ export const LayersPanel = memo(function LayersPanel({
       return null
     const rect = event.currentTarget.getBoundingClientRect()
     const y = (event.clientY - rect.top) / rect.height
-    if (isLayer(dragging[0])) return node.kind === 'layer' ? (y < 0.5 ? 'above' : 'below') : null
-    if (node.kind === 'layer') return isLocked(node.element) ? null : 'inside'
-    if (node.kind === 'group' && y > 0.25 && y < 0.75)
-      return isLocked(node.element) ? null : 'inside'
-    return y < 0.5 ? 'above' : 'below'
+    const position: DropPosition =
+      node.kind !== 'object' && y > 0.25 && y < 0.75 ? 'inside' : y < 0.5 ? 'above' : 'below'
+    const { parent } = destinationFor(node, position)
+    // Nothing moves into locked layers or groups, as in Illustrator.
+    for (
+      let item: Element | null = parent;
+      item && item.id !== 'svgcontent';
+      item = item.parentElement
+    )
+      if (isLocked(item)) return null
+    return position
+  }
+
+  function destinationFor(node: LayerNode, position: DropPosition): DropTarget {
+    const target = node.element
+    // Just below an open layer or group is the top of its contents.
+    if (position === 'inside' || (position === 'below' && node.children.length && isExpanded(node)))
+      return { parent: target, before: null }
+    // The tree lists topmost first, so "above" in the panel means later in the DOM.
+    return {
+      parent: target.parentElement!,
+      before: position === 'above' ? target.nextElementSibling : target,
+    }
   }
 
   function onDragOver(node: LayerNode, event: DragEvent) {
@@ -400,20 +422,12 @@ export const LayersPanel = memo(function LayersPanel({
   function onDrop(node: LayerNode, event: DragEvent) {
     event.preventDefault()
     const position = positionFor(node, event)
-    const target = node.element
-    if (position && target.parentElement) {
-      // The tree lists topmost first, so "above" in the panel means later in the DOM.
-      const destination: DropTarget =
-        position === 'inside'
-          ? { parent: target, before: null }
-          : {
-              parent: target.parentElement,
-              before: position === 'above' ? target.nextElementSibling : target,
-            }
+    if (position && node.element.parentElement) {
+      const destination = destinationFor(node, position)
       const moving = dragging
       act(() => moveElements(editor!, moving, destination))
-      // Keep the moved objects visible: open the group they were dropped into.
-      if (position === 'inside' && !isExpanded(node)) toggle(node)
+      // Keep the moved objects visible: open the layer or group they were dropped into.
+      if (destination.parent === node.element && !isExpanded(node)) toggle(node)
     }
     setDragging([])
     dragSource.current = null
@@ -812,7 +826,7 @@ export const LayersPanel = memo(function LayersPanel({
       </div>
       <div className="flex h-10 shrink-0 items-center gap-1 border-t px-2">
         <span className="flex-1 truncate px-1 text-[11px] text-muted-foreground">
-          {selected.size ? `${selected.size} selected` : 'Drag layers to reorder'}
+          {selected.size ? `${selected.size} selected` : 'Drag to reorder or nest'}
         </span>
         <Tooltip>
           <TooltipTrigger render={<span className="inline-flex" />}>
