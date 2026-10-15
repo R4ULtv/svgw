@@ -28,6 +28,7 @@
     "dompurify": "3.4.16",
     "idb": "8.0.4",
     "lucide-react": "1.54.0",
+    "pathseg": "1.2.1",
     "react": "19.3.0",
     "react-colorful": "5.8.1",
     "react-dom": "19.3.0",

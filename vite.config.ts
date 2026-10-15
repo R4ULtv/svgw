@@ -8,7 +8,16 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: [
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+      // SVG-Edit's prebuilt bundle inlines its PDF export and core-js. Build the engine from its
+      // ES source instead, with the PDF libraries stubbed out (see pdf-stub.ts).
+      { find: /^@svgedit\/svgcanvas$/, replacement: '@svgedit/svgcanvas/svgcanvas.js' },
+      {
+        find: /^(jspdf|svg2pdf\.js)$/,
+        replacement: fileURLToPath(new URL('./src/lib/pdf-stub.ts', import.meta.url)),
+      },
+    ],
   },
   plugins: [
     cloudflare({ viteEnvironment: { name: 'ssr' } }),
