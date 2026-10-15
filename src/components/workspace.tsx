@@ -56,7 +56,7 @@ import { useCloudProjects } from '@/lib/use-cloud-projects'
 import { CloudError } from '@/lib/cloud-api'
 import { blankSvg, downloadSvg, isSvgFile, sampleSvg } from '@/lib/svg'
 import { sanitizeSvg } from '@/lib/sanitize-svg'
-import { svgForExport, type ExportScope } from '@/lib/svg-export'
+import { exportFileName, exportSummary, svgForExport, type ExportScope } from '@/lib/svg-export'
 import {
   alignSelection,
   centerSelectionOnArtboard,
@@ -719,10 +719,9 @@ export function Workspace({ projectId }: { projectId: string }) {
   function downloadArtwork(scope: ExportScope = 'visible') {
     if (!project) return
     try {
-      downloadSvg(
-        svgForExport(currentSvg(project, { forExport: true }), scope),
-        scope === 'all' ? `${project.name || 'untitled'}.full` : project.name,
-      )
+      const source = currentSvg(project, { forExport: true })
+      const svg = svgForExport(source, scope)
+      downloadSvg(svg, exportFileName(project.name, exportSummary(source, scope).soleLayer, scope))
     } catch (cause) {
       toast.error('Could not export SVG', { description: message(cause, 'Try again.') })
     }

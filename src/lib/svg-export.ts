@@ -1,4 +1,4 @@
-import { artworkStats } from './layers'
+import { artworkStats, type ArtworkStats } from './layers'
 
 export type ExportScope = 'all' | 'visible'
 
@@ -213,10 +213,29 @@ export function svgForExport(svg: string, scope: ExportScope = 'visible') {
   return new XMLSerializer().serializeToString(root)
 }
 
-/** The layers and objects an export with `scope` contains, counted before groups are cleaned up. */
-export function exportStats(svg: string, scope: ExportScope = 'visible') {
+export interface ExportSummary {
+  /** The layers and objects in the export, counted before groups are cleaned up. */
+  stats: ArtworkStats
+  /** The only layer exported while the document has others, as when exporting one layer. */
+  soleLayer: string | null
+}
+
+/** What an export with `scope` contains. */
+export function exportSummary(svg: string, scope: ExportScope = 'visible'): ExportSummary {
   const root = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement
-  if (scope === 'visible') pruneArtwork(root)
   // Exported files use Illustrator's markup, where top-level groups are the layers.
-  return artworkStats([...root.children].filter((child) => child.localName === 'g'))
+  const layersOf = () => [...root.children].filter((child) => child.localName === 'g')
+  const total = layersOf().length
+  if (scope === 'visible') pruneArtwork(root)
+  const layers = layersOf()
+  return {
+    stats: artworkStats(layers),
+    soleLayer:
+      total > 1 && layers.length === 1 ? layers[0].getAttribute('data-name')?.trim() || null : null,
+  }
+}
+
+/** A file name for an export: the sole exported layer's name, or else the project's. */
+export function exportFileName(projectName: string, soleLayer: string | null, scope: ExportScope) {
+  return `${soleLayer || projectName.trim() || 'untitled'}${scope === 'all' ? '.full' : ''}`
 }

@@ -1,11 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { ArrowRightIcon, DownloadIcon, TriangleAlertIcon } from 'lucide-react'
 import type { OptimizationResult } from '@/lib/optimize'
 import { formatBytes } from '@/lib/format'
-import type { ArtworkStats } from '@/lib/layers'
 import { downloadSvg } from '@/lib/svg'
-import { exportStats, svgForExport, type ExportScope } from '@/lib/svg-export'
+import {
+  exportFileName,
+  exportSummary,
+  svgForExport,
+  type ExportScope,
+  type ExportSummary,
+} from '@/lib/svg-export'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogClose,
@@ -28,7 +35,7 @@ interface ExportDialogProps {
   getSvg: () => string
 }
 
-function describeStats({ layers, objects, types }: ArtworkStats) {
+function describeStats({ layers, objects, types }: ExportSummary['stats']) {
   const count = (value: number, noun: string) =>
     `${value.toLocaleString()} ${noun}${value === 1 ? '' : 's'}`
   const summary = `${count(layers, 'layer')} · ${count(objects, 'object')}`
@@ -45,13 +52,17 @@ type State =
 export function ExportDialog({ open, onOpenChange, name, size, getSvg }: ExportDialogProps) {
   const [state, setState] = useState<State>({ status: 'optimizing' })
   const [scope, setScope] = useState<ExportScope>('visible')
-  const [stats, setStats] = useState<ArtworkStats | null>(null)
+  const [summary, setSummary] = useState<ExportSummary | null>(null)
+  // Null follows the suggested name, until the name is edited.
+  const [fileName, setFileName] = useState<string | null>(null)
+  const fileNameId = useId()
   useCommandScope('dialog', open)
 
   function changeOpen(next: boolean) {
     if (!next) {
       setScope('visible')
       setState({ status: 'optimizing' })
+      setFileName(null)
     }
     onOpenChange(next)
   }
@@ -63,12 +74,12 @@ export function ExportDialog({ open, onOpenChange, name, size, getSvg }: ExportD
     let url = ''
     let svg: string | null = null
     setState({ status: 'optimizing' })
-    setStats(null)
+    setSummary(null)
     Promise.resolve()
       .then(() => {
         const source = getSvg()
         svg = svgForExport(source, scope)
-        setStats(exportStats(source, scope))
+        setSummary(exportSummary(source, scope))
         return import('@/lib/optimize').then(({ optimizeSvg }) =>
           optimizeSvg(svg!, { signal: controller.signal }),
         )
@@ -94,6 +105,14 @@ export function ExportDialog({ open, onOpenChange, name, size, getSvg }: ExportD
   }, [open, scope])
 
   const result = state.status === 'done' ? state.result : null
+  const suggestedName = exportFileName(name, summary?.soleLayer ?? null, scope)
+  const chosenName = fileName?.trim() || suggestedName
+  const download = () => {
+    const svg = state.status === 'error' ? state.svg : result?.svg
+    if (!svg) return
+    downloadSvg(svg, chosenName)
+    changeOpen(false)
+  }
   const ratio = size.w > 0 && size.h > 0 ? size.w / size.h : 1
   const saved = result ? 1 - result.optimizedBytes / result.originalBytes : 0
 
@@ -195,36 +214,41 @@ export function ExportDialog({ open, onOpenChange, name, size, getSvg }: ExportD
         </div>
         {/* Reserve the line so the dialog doesn't grow when counts arrive. */}
         <p className="-mt-2 min-h-4 text-xs text-muted-foreground tabular-nums">
-          {stats && describeStats(stats)}
+          {summary && describeStats(summary.stats)}
         </p>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={fileNameId} className="text-xs">
+            File name
+          </Label>
+          <div className="flex items-center border border-input focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/50 dark:bg-input/30">
+            <Input
+              id={fileNameId}
+              value={fileName ?? suggestedName}
+              placeholder={suggestedName}
+              spellCheck={false}
+              onChange={(event) => setFileName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  download()
+                }
+              }}
+              className="border-0 bg-transparent focus-visible:ring-0 dark:bg-transparent"
+            />
+            <span className="pr-2.5 text-xs text-muted-foreground">.svg</span>
+          </div>
+        </div>
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
           {state.status === 'error' ? (
-            <Button
-              disabled={!state.svg}
-              onClick={() => {
-                if (!state.svg) return
-                downloadSvg(state.svg, scope === 'all' ? `${name || 'untitled'}.full` : name)
-                changeOpen(false)
-              }}
-            >
+            <Button disabled={!state.svg} onClick={download}>
               <DownloadIcon data-icon="inline-start" />
               Download standard SVG
             </Button>
           ) : (
-            <Button
-              disabled={!result}
-              onClick={() => {
-                if (result) {
-                  downloadSvg(
-                    result.svg,
-                    `${name || 'untitled'}${scope === 'all' ? '.full' : ''}.optimized`,
-                  )
-                  changeOpen(false)
-                }
-              }}
-            >
+            <Button disabled={!result} onClick={download}>
               <DownloadIcon data-icon="inline-start" />
               Download optimized
             </Button>
