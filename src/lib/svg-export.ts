@@ -1,3 +1,5 @@
+import { artworkStats } from './layers'
+
 export type ExportScope = 'all' | 'visible'
 
 const RESOURCES = new Set([
@@ -209,4 +211,12 @@ export function svgForExport(svg: string, scope: ExportScope = 'visible') {
   }
   cleanExport(root)
   return new XMLSerializer().serializeToString(root)
+}
+
+/** The layers and objects an export with `scope` contains, counted before groups are cleaned up. */
+export function exportStats(svg: string, scope: ExportScope = 'visible') {
+  const root = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement
+  if (scope === 'visible') pruneArtwork(root)
+  // Exported files use Illustrator's markup, where top-level groups are the layers.
+  return artworkStats([...root.children].filter((child) => child.localName === 'g'))
 }

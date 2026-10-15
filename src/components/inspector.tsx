@@ -24,11 +24,9 @@ import {
 } from 'lucide-react'
 import { PaintField } from '@/components/color-picker'
 import { DocumentColors } from '@/components/document-colors'
-import { DocumentInfo } from '@/components/document-info'
 import type { CommandId } from '@/lib/commands'
 import type { ColorReplacement, DocumentColor } from '@/lib/document-colors'
 import type { Selection, StyleTarget } from '@/lib/editor'
-import type { ArtworkStats } from '@/lib/layers'
 import type { Alignment, Bounds } from '@/lib/layers'
 import type { SelectionStore } from '@/lib/selection-store'
 import { cn } from '@/lib/utils'
@@ -74,11 +72,6 @@ interface InspectorProps {
   onReplaceColor: (from: string) => ColorReplacement | null
   /** Sets attributes on the selected rectangles, texts, or strokes; a null value removes one. */
   onStyleChange: (target: StyleTarget, values: Record<string, string | null>) => boolean
-  /** Changes whenever the document does. */
-  documentRevision: number
-  /** The SVG as it would be exported, and what it contains; shown with nothing selected. */
-  readDocument: () => { svg: string; stats: ArtworkStats } | null
-  onOptimize: () => void
   /** Node editing is active; object properties return once it ends. */
   editingPath?: boolean
 }
@@ -107,9 +100,6 @@ export function Inspector({
   colors,
   onReplaceColor,
   onStyleChange,
-  documentRevision,
-  readDocument,
-  onOptimize,
   editingPath = false,
 }: InspectorProps) {
   const selection = useSyncExternalStore(
@@ -204,8 +194,7 @@ export function Inspector({
           </Section>
         </>
       ) : (
-        <Section title="Document">
-          <DocumentInfo revision={documentRevision} read={readDocument} onOptimize={onOptimize} />
+        <section className="border-b p-4">
           <div className="flex items-start gap-2.5 text-[11px] leading-relaxed text-muted-foreground">
             {editingPath ? (
               <>
@@ -219,7 +208,7 @@ export function Inspector({
               </>
             )}
           </div>
-        </Section>
+        </section>
       )}
 
       <Section title="Colors">

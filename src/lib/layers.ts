@@ -104,8 +104,7 @@ export interface ArtworkStats {
 }
 
 /** Counts the layers and the objects inside them. */
-export function artworkStats(content: SVGSVGElement): ArtworkStats {
-  const layers = [...content.children].filter(isLayer)
+export function artworkStats(layers: Element[]): ArtworkStats {
   const counts = new Map<string, number>()
   const visit = (parent: Element) => {
     for (const child of drawableChildren(parent)) {

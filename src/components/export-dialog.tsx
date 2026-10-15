@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { ArrowRightIcon, DownloadIcon, TriangleAlertIcon } from 'lucide-react'
 import type { OptimizationResult } from '@/lib/optimize'
 import { formatBytes } from '@/lib/format'
+import type { ArtworkStats } from '@/lib/layers'
 import { downloadSvg } from '@/lib/svg'
-import { svgForExport, type ExportScope } from '@/lib/svg-export'
+import { exportStats, svgForExport, type ExportScope } from '@/lib/svg-export'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -22,7 +23,18 @@ interface ExportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   name: string
+  /** The canvas size, so the preview shows the artboard's shape. */
+  size: { w: number; h: number }
   getSvg: () => string
+}
+
+function describeStats({ layers, objects, types }: ArtworkStats) {
+  const count = (value: number, noun: string) =>
+    `${value.toLocaleString()} ${noun}${value === 1 ? '' : 's'}`
+  const summary = `${count(layers, 'layer')} · ${count(objects, 'object')}`
+  return types.length
+    ? `${summary}: ${types.map(([type, value]) => count(value, type.toLowerCase())).join(', ')}`
+    : summary
 }
 
 type State =
@@ -30,9 +42,10 @@ type State =
   | { status: 'done'; result: OptimizationResult; url: string }
   | { status: 'error'; message: string; svg: string | null }
 
-export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogProps) {
+export function ExportDialog({ open, onOpenChange, name, size, getSvg }: ExportDialogProps) {
   const [state, setState] = useState<State>({ status: 'optimizing' })
   const [scope, setScope] = useState<ExportScope>('visible')
+  const [stats, setStats] = useState<ArtworkStats | null>(null)
   useCommandScope('dialog', open)
 
   function changeOpen(next: boolean) {
@@ -50,10 +63,12 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
     let url = ''
     let svg: string | null = null
     setState({ status: 'optimizing' })
+    setStats(null)
     Promise.resolve()
       .then(() => {
         const source = getSvg()
         svg = svgForExport(source, scope)
+        setStats(exportStats(source, scope))
         return import('@/lib/optimize').then(({ optimizeSvg }) =>
           optimizeSvg(svg!, { signal: controller.signal }),
         )
@@ -79,6 +94,7 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
   }, [open, scope])
 
   const result = state.status === 'done' ? state.result : null
+  const ratio = size.w > 0 && size.h > 0 ? size.w / size.h : 1
   const saved = result ? 1 - result.optimizedBytes / result.originalBytes : 0
 
   return (
@@ -120,21 +136,32 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
           </p>
         </div>
 
-        <div className="checker flex h-56 items-center justify-center overflow-hidden border p-4">
+        <div className="relative flex h-56 items-center justify-center border p-4 [container-type:size]">
+          {/* The artboard at the canvas's aspect ratio, as large as fits. */}
+          <div
+            className="checker max-h-full max-w-full overflow-hidden ring-1 ring-border"
+            style={{ aspectRatio: `${ratio}`, width: `min(100cqw, 100cqh * ${ratio})` }}
+          >
+            {state.status === 'done' && (
+              <img
+                src={state.url}
+                alt="Optimized SVG preview"
+                className="size-full object-contain"
+              />
+            )}
+          </div>
+          {/* Messages center on the preview area: a thin artboard could not fit them. */}
           {state.status === 'optimizing' && (
-            <div className="flex items-center gap-2 bg-background/90 px-3 py-2 text-xs text-muted-foreground">
+            <div className="absolute flex items-center gap-2 bg-background/90 px-3 py-2 text-xs text-muted-foreground">
               <Spinner />
               Optimizing…
             </div>
           )}
           {state.status === 'error' && (
-            <div className="flex max-w-xs items-start gap-2 bg-background/90 p-3 text-xs text-destructive">
+            <div className="absolute flex max-w-xs items-start gap-2 bg-background/90 p-3 text-xs text-destructive">
               <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
               {state.message}
             </div>
-          )}
-          {state.status === 'done' && (
-            <img src={state.url} alt="Optimized SVG preview" className="size-full object-contain" />
           )}
         </div>
 
@@ -166,6 +193,10 @@ export function ExportDialog({ open, onOpenChange, name, getSvg }: ExportDialogP
             </span>
           )}
         </div>
+        {/* Reserve the line so the dialog doesn't grow when counts arrive. */}
+        <p className="-mt-2 min-h-4 text-xs text-muted-foreground tabular-nums">
+          {stats && describeStats(stats)}
+        </p>
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>

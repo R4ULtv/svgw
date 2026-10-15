@@ -59,7 +59,6 @@ import { sanitizeSvg } from '@/lib/sanitize-svg'
 import { svgForExport, type ExportScope } from '@/lib/svg-export'
 import {
   alignSelection,
-  artworkStats,
   centerSelectionOnArtboard,
   createLayer,
   distributeSelection,
@@ -213,7 +212,6 @@ export function Workspace({ projectId }: { projectId: string }) {
   const [mode, setMode] = useState('select')
   // View updates never invalidate the layer tree; selection updates reuse its document snapshot.
   const [revision, setRevision] = useState(0)
-  const [documentRevision, setDocumentRevision] = useState(0)
   const [layerRevision, setLayerRevision] = useState(0)
   const [selectionRevision, setSelectionRevision] = useState(0)
   const documentRefresh = useRef(false)
@@ -513,7 +511,6 @@ export function Workspace({ projectId }: { projectId: string }) {
       if (artwork) setStarterDismissed(true)
       documentRefresh.current = false
       appearanceRefresh.current = false
-      setDocumentRevision((value) => value + 1)
     }
   }
 
@@ -1635,19 +1632,6 @@ export function Workspace({ projectId }: { projectId: string }) {
       onReplaceColor={replaceColor}
       onStyleChange={changeStyle}
       editingPath={pathState.editing}
-      documentRevision={documentRevision}
-      readDocument={() =>
-        project && engine.current
-          ? {
-              svg: currentSvg(project, { forExport: true }),
-              stats: artworkStats(engine.current.getSvgContent()),
-            }
-          : null
-      }
-      onOptimize={() => {
-        commitAttribute()
-        setExporting(true)
-      }}
     />
   )
 
@@ -1912,6 +1896,7 @@ export function Workspace({ projectId }: { projectId: string }) {
             open={exporting}
             onOpenChange={setExporting}
             name={project.name}
+            size={size}
             getSvg={() => currentSvg(project, { forExport: true })}
           />
         </Suspense>
